@@ -1,0 +1,30 @@
+migration:
+  name: legacy-payments-to-new-payments
+  source: source_db
+  target: target_db
+  sample_limit: 5
+
+tables:
+  customers:
+    primary_key: customer_id
+    checks:
+      - row_count
+      - missing_keys
+      - unexpected_keys
+      - duplicate_keys
+
+  accounts:
+    primary_key: account_id
+    checks:
+      - row_count
+      - missing_keys
+      - unexpected_keys
+      - duplicate_keys
+
+  transactions:
+    primary_key: transaction_id
+    checks:
+      - row_count
+      - missing_keys
+      - unexpected_keys
+      - duplicate_keys

@@ -1,0 +1,38 @@
+services:
+  source-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: source_db
+      POSTGRES_USER: ${DQG_POSTGRES_USER:-dqg_demo}
+      POSTGRES_PASSWORD: ${DQG_POSTGRES_PASSWORD:-dqg_demo_password}
+    ports:
+      - "5433:5432"
+    volumes:
+      - source-db-data:/var/lib/postgresql/data
+      - ./docker/source:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d source_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  target-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: target_db
+      POSTGRES_USER: ${DQG_POSTGRES_USER:-dqg_demo}
+      POSTGRES_PASSWORD: ${DQG_POSTGRES_PASSWORD:-dqg_demo_password}
+    ports:
+      - "5434:5432"
+    volumes:
+      - target-db-data:/var/lib/postgresql/data
+      - ./docker/target:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d target_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+volumes:
+  source-db-data:
+  target-db-data:
