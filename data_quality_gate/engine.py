@@ -8,7 +8,16 @@ from time import perf_counter
 
 from sqlalchemy import Engine
 
-from data_quality_gate.checks import duplicate_keys, missing_keys, row_count, unexpected_keys
+from data_quality_gate.checks import (
+    allowed_values,
+    duplicate_keys,
+    missing_keys,
+    null_check,
+    referential_integrity,
+    row_count,
+    schema_match,
+    unexpected_keys,
+)
 from data_quality_gate.checks.base import CheckContext
 from data_quality_gate.config import CheckName, QualityGateConfig
 from data_quality_gate.database import build_engine, verify_connection
@@ -28,6 +37,10 @@ CHECK_REGISTRY: dict[CheckName, CheckFunction] = {
     CheckName.MISSING_KEYS: missing_keys.run,
     CheckName.UNEXPECTED_KEYS: unexpected_keys.run,
     CheckName.DUPLICATE_KEYS: duplicate_keys.run,
+    CheckName.SCHEMA_MATCH: schema_match.run,
+    CheckName.NULL_CHECK: null_check.run,
+    CheckName.ALLOWED_VALUES: allowed_values.run,
+    CheckName.REFERENTIAL_INTEGRITY: referential_integrity.run,
 }
 
 
@@ -58,6 +71,8 @@ def run_checks(
                 table=table_name,
                 primary_key=table_config.primary_key,
                 sample_limit=config.migration.sample_limit,
+                table_config=table_config,
+                all_tables=config.tables,
             )
             results.append(check(context))
 

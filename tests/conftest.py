@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -51,3 +52,19 @@ def sqlite_pair() -> Iterator[tuple[Engine, Engine]]:
     yield source, target
     source.dispose()
     target.dispose()
+
+
+@pytest.fixture()
+def postgres_pair() -> Iterator[tuple[Engine, Engine]]:
+    source_url = os.getenv("DQG_SOURCE_DB_URL")
+    target_url = os.getenv("DQG_TARGET_DB_URL")
+    if not source_url or not target_url:
+        pytest.skip("DQG_SOURCE_DB_URL and DQG_TARGET_DB_URL are required for integration tests.")
+
+    source = create_engine(source_url, future=True)
+    target = create_engine(target_url, future=True)
+    try:
+        yield source, target
+    finally:
+        source.dispose()
+        target.dispose()

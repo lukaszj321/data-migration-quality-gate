@@ -37,4 +37,4 @@ INSERT INTO transactions (
     ('T016', 'A002', 'C001', -75.75, 'EUR', 'wire', 'Hotel prepayment', '2024-03-16T06:50:00Z'),
     ('T017', 'A005', 'C004', -400.00, 'CZK', 'fee', 'Service package', '2024-03-17T08:10:00Z'),
     ('T018', 'A001', 'C001', 55.55, 'PLN', 'refund', 'Returned item', '2024-03-18T14:35:00Z'),
-    ('T999', 'A999', 'C999', 10.00, 'XYZ', 'deposit', NULL, '2024-03-19T10:00:00Z');
+    ('T999', 'A999', 'C999', NULL, 'XYZ', 'deposit', NULL, '2024-03-19T10:00:00Z');

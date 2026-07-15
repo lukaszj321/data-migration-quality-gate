@@ -12,6 +12,23 @@ tables:
       - missing_keys
       - unexpected_keys
       - duplicate_keys
+      - schema_match
+      - null_check
+      - allowed_values
+
+    columns:
+      customer_id:
+        not_null: true
+      full_name:
+        not_null: true
+      email:
+        not_null: true
+      country_code:
+        allowed_values:
+          - PL
+          - DE
+          - CZ
+          - SK
 
   accounts:
     primary_key: account_id
@@ -20,6 +37,26 @@ tables:
       - missing_keys
       - unexpected_keys
       - duplicate_keys
+      - schema_match
+      - null_check
+      - allowed_values
+      - referential_integrity
+
+    columns:
+      account_id:
+        not_null: true
+      customer_id:
+        not_null: true
+        references:
+          table: customers
+          column: customer_id
+      currency:
+        not_null: true
+        allowed_values:
+          - PLN
+          - EUR
+          - USD
+          - CZK
 
   transactions:
     primary_key: transaction_id
@@ -28,3 +65,32 @@ tables:
       - missing_keys
       - unexpected_keys
       - duplicate_keys
+      - schema_match
+      - null_check
+      - allowed_values
+      - referential_integrity
+
+    columns:
+      transaction_id:
+        not_null: true
+      account_id:
+        not_null: true
+        references:
+          table: accounts
+          column: account_id
+      customer_id:
+        not_null: true
+        references:
+          table: customers
+          column: customer_id
+      amount:
+        not_null: true
+      currency:
+        not_null: true
+        allowed_values:
+          - PLN
+          - EUR
+          - USD
+          - CZK
+      occurred_at:
+        not_null: true

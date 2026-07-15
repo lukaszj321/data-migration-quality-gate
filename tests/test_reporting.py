@@ -50,3 +50,27 @@ def test_write_json_report_serializes_model(tmp_path) -> None:  # type: ignore[n
     assert payload["schema_version"] == "0.1"
     assert payload["summary"]["deployment_decision"] == "ALLOW"
     assert payload["results"][0]["sample_records"][0]["source_count"] == 1
+
+
+def test_new_check_result_serializes_without_schema_version_change() -> None:
+    result = CheckResult(
+        check_name="schema_match",
+        table="transactions",
+        status=CheckStatus.FAIL,
+        discrepancy_count=1,
+        message="Found 1 schema difference.",
+        sample_records=[
+            {
+                "column": "description",
+                "issue": "length_mismatch",
+                "source": "varchar(255)",
+                "target": "varchar(80)",
+            }
+        ],
+        duration_ms=3,
+    )
+
+    payload = result.model_dump(mode="json")
+
+    assert payload["check_name"] == "schema_match"
+    assert payload["sample_records"][0]["issue"] == "length_mismatch"

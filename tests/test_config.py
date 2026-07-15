@@ -40,9 +40,9 @@ migration:
 tables:
   customers:
     primary_key: customer_id
-    checks: [schema_match]
+    checks: [column_comparison]
 """,
-            "schema_match",
+            "column_comparison",
         ),
         (
             """
@@ -113,3 +113,188 @@ tables: {}
         load_config(path)
 
     assert "tables" in str(exc_info.value)
+
+
+def test_loads_valid_column_configuration(tmp_path: Path) -> None:
+    path = tmp_path / "migration.yaml"
+    path.write_text(
+        """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [schema_match, null_check, allowed_values]
+    columns:
+      customer_id:
+        not_null: true
+      country_code:
+        allowed_values: [PL, DE]
+  accounts:
+    primary_key: account_id
+    checks: [referential_integrity]
+    columns:
+      account_id:
+        not_null: true
+      customer_id:
+        references:
+          table: customers
+          column: customer_id
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.tables["customers"].columns["customer_id"].not_null is True
+    assert config.tables["accounts"].columns["customer_id"].references is not None
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [allowed_values]
+    columns:
+      country_code:
+        allowed_values: []
+""",
+            "allowed_values must not be empty",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [allowed_values]
+    columns:
+      country_code:
+        allowed_values: [PL, PL]
+""",
+            "duplicate allowed values",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [referential_integrity]
+    columns:
+      customer_id:
+        references:
+          table: customers
+          column: customer_id
+""",
+            "unknown table",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [schema_match]
+    columns:
+      customer_id: {}
+  accounts:
+    primary_key: account_id
+    checks: [referential_integrity]
+    columns:
+      customer_id:
+        references:
+          table: customers
+          column: missing_id
+""",
+            "unknown column",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [null_check]
+    columns:
+      customer_id: {}
+""",
+            "not_null",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [allowed_values]
+    columns:
+      customer_id:
+        not_null: true
+""",
+            "allowed_values requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [referential_integrity]
+    columns:
+      customer_id:
+        not_null: true
+""",
+            "referential_integrity requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  customers:
+    primary_key: customer_id
+    checks: [schema_match]
+""",
+            "schema_match requires",
+        ),
+    ],
+)
+def test_rejects_invalid_column_configuration(tmp_path: Path, body: str, expected: str) -> None:
+    path = tmp_path / "bad.yaml"
+    path.write_text(body.strip(), encoding="utf-8")
+
+    with pytest.raises(ConfigurationError) as exc_info:
+        load_config(path)
+
+    assert expected in str(exc_info.value)

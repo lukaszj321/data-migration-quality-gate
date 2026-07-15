@@ -22,6 +22,8 @@ class CheckContext:
     table: str
     primary_key: str
     sample_limit: int
+    table_config: Any | None = None
+    all_tables: dict[str, Any] | None = None
 
 
 def quote_identifier(identifier: str) -> str:

@@ -20,6 +20,10 @@ class CheckName(StrEnum):
     MISSING_KEYS = "missing_keys"
     UNEXPECTED_KEYS = "unexpected_keys"
     DUPLICATE_KEYS = "duplicate_keys"
+    SCHEMA_MATCH = "schema_match"
+    NULL_CHECK = "null_check"
+    ALLOWED_VALUES = "allowed_values"
+    REFERENTIAL_INTEGRITY = "referential_integrity"
 
 
 class MigrationConfig(BaseModel):
@@ -49,11 +53,57 @@ class MigrationConfig(BaseModel):
         return self
 
 
+class ReferenceConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    table: str = Field(min_length=1)
+    column: str = Field(min_length=1)
+
+    @field_validator("table", "column")
+    @classmethod
+    def reference_names_must_be_identifiers(cls, value: str) -> str:
+        stripped = value.strip()
+        if not IDENTIFIER_PATTERN.fullmatch(stripped):
+            raise ValueError("must be a non-empty SQL identifier")
+        return stripped
+
+
+class ColumnConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    not_null: bool = False
+    allowed_values: list[str] | None = None
+    references: ReferenceConfig | None = None
+
+    @field_validator("allowed_values")
+    @classmethod
+    def allowed_values_must_be_unique(cls, values: list[str] | None) -> list[str] | None:
+        if values is None:
+            return None
+        if not values:
+            raise ValueError("allowed_values must not be empty")
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        normalized: list[str] = []
+        for value in values:
+            if not isinstance(value, str) or not value:
+                raise ValueError("allowed_values entries must be non-empty strings")
+            if value in seen:
+                duplicates.append(value)
+            seen.add(value)
+            normalized.append(value)
+        if duplicates:
+            duplicate_list = ", ".join(sorted(set(duplicates)))
+            raise ValueError(f"duplicate allowed values are not allowed: {duplicate_list}")
+        return normalized
+
+
 class TableConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     primary_key: str = Field(min_length=1)
     checks: list[CheckName] = Field(min_length=1)
+    columns: dict[str, ColumnConfig] = Field(default_factory=dict)
 
     @field_validator("primary_key")
     @classmethod
@@ -77,6 +127,40 @@ class TableConfig(BaseModel):
             raise ValueError(f"duplicate checks are not allowed: {duplicate_list}")
         return checks
 
+    @field_validator("columns")
+    @classmethod
+    def column_names_must_be_identifiers(
+        cls, columns: dict[str, ColumnConfig]
+    ) -> dict[str, ColumnConfig]:
+        for column_name in columns:
+            if not column_name.strip():
+                raise ValueError("column names must not be blank")
+            if not IDENTIFIER_PATTERN.fullmatch(column_name):
+                raise ValueError(f"column name '{column_name}' must be a SQL identifier")
+        return columns
+
+    @model_validator(mode="after")
+    def check_requirements_must_have_column_config(self) -> TableConfig:
+        if CheckName.SCHEMA_MATCH in self.checks and not self.columns:
+            raise ValueError("schema_match requires at least one configured column")
+        if CheckName.NULL_CHECK in self.checks and not any(
+            column.not_null for column in self.columns.values()
+        ):
+            raise ValueError("null_check requires at least one column with not_null: true")
+        if CheckName.ALLOWED_VALUES in self.checks and not any(
+            column.allowed_values for column in self.columns.values()
+        ):
+            raise ValueError(
+                "allowed_values requires at least one column with allowed_values configured"
+            )
+        if CheckName.REFERENTIAL_INTEGRITY in self.checks and not any(
+            column.references for column in self.columns.values()
+        ):
+            raise ValueError(
+                "referential_integrity requires at least one column with references configured"
+            )
+        return self
+
 
 class QualityGateConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -95,6 +179,25 @@ class QualityGateConfig(BaseModel):
             if not IDENTIFIER_PATTERN.fullmatch(table_name):
                 raise ValueError(f"table name '{table_name}' must be a SQL identifier")
         return tables
+
+    @model_validator(mode="after")
+    def references_must_point_to_configured_columns(self) -> QualityGateConfig:
+        for table_name, table in self.tables.items():
+            for column_name, column in table.columns.items():
+                if column.references is None:
+                    continue
+                reference = column.references
+                referenced_table = self.tables.get(reference.table)
+                if referenced_table is None:
+                    raise ValueError(
+                        f"{table_name}.{column_name} references unknown table '{reference.table}'"
+                    )
+                if reference.column not in referenced_table.columns:
+                    raise ValueError(
+                        f"{table_name}.{column_name} references unknown column "
+                        f"'{reference.table}.{reference.column}'"
+                    )
+        return self
 
 
 def load_config(path: str | Path) -> QualityGateConfig:

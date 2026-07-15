@@ -25,6 +25,6 @@ CREATE TABLE transactions (
     amount NUMERIC(18,2),
     currency VARCHAR(3),
     transaction_type VARCHAR(30),
-    description VARCHAR(255),
+    description VARCHAR(80),
     occurred_at TIMESTAMPTZ
 );
