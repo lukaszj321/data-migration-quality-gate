@@ -1,86 +1,236 @@
 # Data Migration Quality Gate
 
-Data Migration Quality Gate is a small CLI tool for validating a PostgreSQL data migration before a release or cutover. It compares a source database with a target database and returns a deployment decision that can be used by data engineers, migration teams, QA analysts, or release managers.
+Data Migration Quality Gate to narzędzie CLI pełniące rolę bramki jakości migracji, czyli `quality gate`, dla migracji danych pomiędzy dwiema bazami PostgreSQL. Porównuje bazę źródłową z bazą docelową, wykonuje zestaw kontroli jakości i zwraca decyzję wdrożeniową: `ALLOW`, `REVIEW` albo `BLOCK`.
 
-Milestone 2A is a working vertical slice. It validates YAML configuration, connects to two PostgreSQL databases, runs SQL-based checks, prints a CLI summary, writes a JSON report, and exits with a meaningful status code.
+Projekt jest aktualnie na etapie Milestone 2A. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, osiem kontroli jakości, czytelne podsumowanie CLI, raport JSON oraz kody wyjścia przydatne w automatyzacji.
+
+## Spis treści
+
+- [Problem biznesowy](#problem-biznesowy)
+- [Dla kogo jest to narzędzie](#dla-kogo-jest-to-narzędzie)
+- [Jak działa narzędzie](#jak-działa-narzędzie)
+- [Diagram przepływu](#diagram-przepływu)
+- [Aktualny zakres](#aktualny-zakres)
+- [Dostępne kontrole](#dostępne-kontrole)
+- [Dane demonstracyjne](#dane-demonstracyjne)
+- [Kontrolowane błędy target](#kontrolowane-błędy-target)
+- [Wymagania](#wymagania)
+- [Uruchomienie baz](#uruchomienie-baz)
+- [Instalacja](#instalacja)
+- [Konfiguracja YAML](#konfiguracja-yaml)
+- [Walidacja konfiguracji](#walidacja-konfiguracji)
+- [Uruchomienie gate](#uruchomienie-gate)
+- [Statusy decyzje i kody wyjścia](#statusy-decyzje-i-kody-wyjścia)
+- [Raport JSON](#raport-json)
+- [Testy i quality gates](#testy-i-quality-gates)
+- [Struktura projektu](#struktura-projektu)
+- [Ograniczenia Milestone 2A](#ograniczenia-milestone-2a)
+- [Planowane kolejne kontrole](#planowane-kolejne-kontrole)
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Problem biznesowy
+
+Migracja danych rzadko kończy się na prostym skopiowaniu rekordów. Zespół musi wiedzieć, czy dane w bazie docelowej są kompletne, czy nie pojawiły się nadmiarowe rekordy, czy logiczne klucze migracyjne nie zostały zdublowane oraz czy podstawowe reguły domenowe nadal są spełnione.
+
+Sama liczba rekordów nie wystarcza. Tabela docelowa może mieć tyle samo wierszy co tabela źródłowa, a mimo to zawierać inne rekordy: część danych może zniknąć, część może pojawić się nadmiarowo, a część może łamać relacje logiczne albo dopuszczalne wartości.
+
+Data Migration Quality Gate automatyzuje te kontrole i zwraca wynik, który można wykorzystać przed decyzją o wdrożeniu migracji.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Dla kogo jest to narzędzie
+
+Projekt jest przeznaczony dla osób pracujących z migracjami danych i walidacją jakości danych:
+
+- inżynierów danych,
+- developerów odpowiedzialnych za migracje,
+- analityków QA,
+- release managerów,
+- zespołów utrzymujących systemy z bazami PostgreSQL.
+
+README zakłada znajomość podstaw SQL, migracji danych lub inżynierii danych. Nie wymaga znajomości wewnętrznej struktury tego repozytorium.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Jak działa narzędzie
+
+Narzędzie czyta `migration.yaml`, waliduje konfigurację przez Pydantic, pobiera connection stringi ze zmiennych środowiskowych i wykonuje skonfigurowane kontrole dla tabel `customers`, `accounts` oraz `transactions`.
+
+Baza źródłowa reprezentuje dane przed migracją. Baza docelowa reprezentuje wynik migracji. Obie bazy są uruchamiane lokalnie przez Docker Compose jako oddzielne usługi:
+
+- `source-db`, baza `source_db`, port hosta `5433`,
+- `target-db`, baza `target_db`, port hosta `5434`.
+
+Każda tabela ma techniczny klucz `row_id`. Kontrole migracyjne używają natomiast logicznych kluczy domenowych skonfigurowanych w YAML, takich jak `customer_id`, `account_id` i `transaction_id`.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Diagram przepływu
 
 ```mermaid
 flowchart LR
-    A[(Source PostgreSQL)] --> C[Data Quality Checks]
-    B[(Target PostgreSQL)] --> C
-    D[YAML Configuration] --> C
-    C --> E[Check Results]
+    A[(Źródłowy PostgreSQL)] --> C[Kontrole jakości danych]
+    B[(Docelowy PostgreSQL)] --> C
+    D[Konfiguracja YAML] --> C
+    C --> E[Wyniki kontroli]
     E --> F[PASS / WARN / FAIL]
-    E --> G[JSON Report]
+    E --> G[Raport JSON]
     F --> H[ALLOW / REVIEW / BLOCK]
 ```
 
-## Why This Exists
+[↑ Powrót do spisu treści](#spis-treści)
 
-Counting rows is useful, but it is not enough to prove that a migration is correct. A target table can have the same number of rows while still missing real source records, containing unexpected records, duplicating logical migration keys, breaking logical references, or storing values outside accepted business domains.
+---
 
-## Source And Target
+## Aktualny zakres
 
-Docker Compose starts two separate PostgreSQL services:
+Milestone 2A obejmuje:
 
-- `source-db` on host port `5433`, database `source_db`
-- `target-db` on host port `5434`, database `target_db`
+- CLI `data-quality-gate`,
+- walidację konfiguracji YAML,
+- połączenie z dwiema bazami PostgreSQL,
+- osiem kontroli jakości danych,
+- agregację wyników do `PASS`, `WARN` albo `FAIL`,
+- decyzję wdrożeniową `ALLOW`, `REVIEW` albo `BLOCK`,
+- raport JSON w katalogu `reports/`,
+- testy jednostkowe i integracyjne,
+- lokalne środowisko demonstracyjne w Docker Compose.
 
-Both databases contain:
+Wersja aplikacji pozostaje `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`.
 
-- `customers`
-- `accounts`
-- `transactions`
+[↑ Powrót do spisu treści](#spis-treści)
 
-Each table has a physical `row_id` primary key. Migration checks use logical keys configured in `migration.yaml`: `customer_id`, `account_id`, and `transaction_id`.
+---
 
-The target database intentionally does not define unique constraints or foreign keys on logical migration fields. That lets the demo represent bad migration outcomes: duplicate logical keys and orphan records can exist long enough for the quality gate to detect them.
+## Dostępne kontrole
 
-## Implemented Checks
+### `row_count`
 
-Milestone 2A implements eight checks:
+Porównuje liczbę rekordów w tabeli źródłowej i docelowej.
 
-- `row_count`: compares source and target row counts.
-- `missing_keys`: finds logical keys present in source but absent from target.
-- `unexpected_keys`: finds logical keys present only in target.
-- `duplicate_keys`: finds duplicated logical keys in source and target separately.
-- `schema_match`: compares source and target table structure, including columns, data types, character lengths, numeric precision/scale, and nullability.
-- `null_check`: checks configured `not_null` columns in source and target.
-- `allowed_values`: checks configured finite value sets, case-sensitively, while leaving NULL handling to `null_check`.
-- `referential_integrity`: checks logical parent-child references inside each database, without requiring physical FK constraints.
+Wykrywa różnicę w liczbie wierszy. Zwraca `PASS`, gdy liczby są równe, oraz `FAIL`, gdy są różne. Ta kontrola jest szybkim sygnałem, ale nie dowodzi poprawności migracji.
 
-Not implemented yet: `column_comparison`, `numeric_tolerance`, `checksum`, HTML reporting, GitHub Actions, cloud deployment, tags, or releases.
+### `missing_keys`
 
-## Demonstration Defects
+Wykrywa logiczne klucze obecne w bazie źródłowej, ale nieobecne w bazie docelowej.
 
-The target seed data contains controlled, deterministic defects:
+Pomaga znaleźć brakujące rekordy po migracji. Zwraca `PASS`, gdy niczego nie brakuje, oraz `FAIL`, gdy co najmniej jeden klucz źródłowy nie występuje w target.
 
-| Problem | Table | Record/column | Detecting check |
-| ------- | ----- | ------------- | ---------------- |
-| Missing migrated transaction | `transactions` | `T006` | `missing_keys` |
-| Missing migrated transaction | `transactions` | `T014` | `missing_keys` |
-| Unexpected target transaction | `transactions` | `T999` | `unexpected_keys` |
-| Duplicate logical transaction key | `transactions` | `T003` | `duplicate_keys` |
-| Duplicate logical customer key | `customers` | `C003` | `duplicate_keys` |
-| Forbidden NULL | `transactions` | `T999.amount` | `null_check` |
-| Unsupported currency | `transactions` | `T999.currency = XYZ` | `allowed_values` |
-| Orphan account reference | `transactions` | `T999.account_id = A999` | `referential_integrity` |
-| Orphan customer reference | `transactions` | `T999.customer_id = C999` | `referential_integrity` |
-| Controlled schema difference | `transactions` | `description VARCHAR(255)` source vs `VARCHAR(80)` target | `schema_match` |
-| Changed amount for a future column comparison | `transactions` | `T004.amount` | Not implemented yet |
-| Truncated text for a future column comparison | `transactions` | `T010.description` | Not implemented yet |
+### `unexpected_keys`
 
-The source database is intentionally clean for the configured Milestone 2A rules.
+Wykrywa logiczne klucze obecne tylko w bazie docelowej.
 
-## Logical Relations
+Pokazuje nadmiarowe rekordy, które nie mają odpowiednika w source. Zwraca `PASS`, gdy takich rekordów nie ma, oraz `WARN`, gdy występują. W tym projekcie nadmiarowy rekord wymaga przeglądu, ale sam w sobie nie blokuje migracji tak jak `FAIL`.
 
-`referential_integrity` is a logical check, not a physical database constraint. PostgreSQL does not reject the demo target rows, because the target schema intentionally avoids FK constraints. The quality gate checks the configured relationships with SQL and reports orphan records as migration defects.
+### `duplicate_keys`
 
-This distinction is useful during migrations: a target landing area may need to accept imperfect data temporarily, while the gate decides whether the release should be allowed, reviewed, or blocked.
+Wykrywa duplikaty logicznych kluczy migracyjnych osobno w source i target.
 
-## Install And Run
+Pomaga znaleźć sytuacje, w których ten sam `customer_id`, `account_id` albo `transaction_id` występuje więcej niż raz. Zwraca `PASS`, gdy nie ma duplikatów, oraz `FAIL`, gdy duplikaty występują w którejkolwiek bazie.
 
-Create the databases:
+### `schema_match`
+
+Porównuje strukturę tabeli source i target.
+
+Sprawdza obecność kolumn, typ danych, długość pól znakowych, precision i scale dla `NUMERIC` oraz nullability. Nie porównuje nazw constraintów, indeksów, kolejności fizycznej kolumn ani wartości domyślnych. Zwraca `PASS`, gdy schemat jest zgodny dla kontrolowanych kolumn, oraz `FAIL`, gdy znajdzie istotną niezgodność schematu.
+
+### `null_check`
+
+Sprawdza kolumny oznaczone w YAML jako `not_null: true`.
+
+Kontrola działa osobno dla source i target. Wykrywa niedozwolone wartości `NULL` w kolumnach wymaganych logicznie. Zwraca `PASS`, gdy nie ma takich wartości, oraz `FAIL`, gdy pojawi się co najmniej jeden niedozwolony `NULL`.
+
+### `allowed_values`
+
+Sprawdza kolumny z listą `allowed_values`.
+
+Porównanie jest dokładne i case-sensitive. `NULL` nie jest naruszeniem tej kontroli, bo obsługuje go `null_check`. Zwraca `PASS`, gdy wszystkie niepuste wartości są dozwolone, oraz `FAIL`, gdy source albo target zawiera wartość spoza listy.
+
+### `referential_integrity`
+
+Sprawdza logiczną integralność referencyjną wewnątrz tej samej bazy.
+
+Dla relacji skonfigurowanych przez `references` kontrola sprawdza, czy wartość w tabeli child istnieje w tabeli parent. Nie porównuje relacji source bezpośrednio z target. `NULL` w child jest ignorowany przez tę kontrolę i powinien być obsłużony przez `null_check`. Zwraca `PASS`, gdy relacje są poprawne, oraz `FAIL`, gdy występują orphan records.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Dane demonstracyjne
+
+Docker Compose uruchamia dwie deterministycznie seedowane bazy PostgreSQL. Source zawiera spójny zestaw danych demonstracyjnych:
+
+- 6 klientów w `customers`,
+- 8 kont w `accounts`,
+- 18 transakcji w `transactions`.
+
+Target symuluje wynik migracji z kontrolowanymi błędami demonstracyjnymi. Błędy są celowe, powtarzalne i opisane w tabeli poniżej.
+
+Target celowo nie ma constraintów `UNIQUE` ani fizycznych FK blokujących te błędy. Dzięki temu baza może przyjąć niepoprawny wynik migracji, a narzędzie może wykryć problemy po fakcie. To odzwierciedla częsty wzorzec pracy z obszarem landing/staging podczas migracji.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Kontrolowane błędy target
+
+| Problem | Tabela | Rekord lub kolumna | Wykrywająca kontrola |
+| ------- | ------ | ------------------ | -------------------- |
+| Brakująca transakcja po migracji | `transactions` | `T006` | `missing_keys` |
+| Brakująca transakcja po migracji | `transactions` | `T014` | `missing_keys` |
+| Nadmiarowa transakcja w target | `transactions` | `T999` | `unexpected_keys` |
+| Duplikat logicznego klucza transakcji | `transactions` | `transactions.T003` | `duplicate_keys` |
+| Duplikat logicznego klucza klienta | `customers` | `customers.C003` | `duplicate_keys` |
+| Niedozwolony `NULL` | `transactions` | `transactions.T999.amount = NULL` | `null_check` |
+| Niedozwolona waluta | `transactions` | `transactions.T999.currency = XYZ` | `allowed_values` |
+| Orphan do nieistniejącego konta | `transactions` | `T999.account_id = A999` | `referential_integrity` |
+| Orphan do nieistniejącego klienta | `transactions` | `T999.customer_id = C999` | `referential_integrity` |
+| Różnica schematu | `transactions` | source `description VARCHAR(255)`, target `description VARCHAR(80)` | `schema_match` |
+
+Dodatkowo target zawiera dane przydatne dla przyszłych kontroli, których Milestone 2A jeszcze nie implementuje: zmienioną kwotę dla `T004` i skrócony opis dla `T010`.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Wymagania
+
+Do uruchomienia projektu lokalnie potrzebne są:
+
+- Python 3.12,
+- PostgreSQL uruchamiany przez Docker Compose,
+- Docker Compose,
+- pakiet instalowany z `pyproject.toml`.
+
+Główne biblioteki i narzędzia developerskie:
+
+- SQLAlchemy Core,
+- psycopg,
+- Pydantic,
+- PyYAML,
+- pytest,
+- pytest-cov,
+- Ruff,
+- mypy.
+
+Projekt nie używa SQLAlchemy ORM, FastAPI, Reacta, Pandas, Celery, Redis, Kubernetes ani usług chmurowych.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Uruchomienie baz
+
+Uruchom świeże środowisko baz:
 
 ```powershell
 docker compose down --volumes --remove-orphans
@@ -88,60 +238,53 @@ docker compose up -d
 docker compose ps
 ```
 
-Set connection variables:
+Po starcie oba serwisy powinny być `healthy`:
+
+- `source-db`,
+- `target-db`.
+
+Connection stringi nie są zapisywane w `migration.yaml`. Ustaw je przez zmienne środowiskowe:
 
 ```powershell
 $env:DQG_SOURCE_DB_URL="postgresql+psycopg://dqg_demo:dqg_demo_password@localhost:5433/source_db"
 $env:DQG_TARGET_DB_URL="postgresql+psycopg://dqg_demo:dqg_demo_password@localhost:5434/target_db"
 ```
 
-Install the package:
+Wartości są demonstracyjne. Prawdziwego pliku `.env` nie należy commitować.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Instalacja
+
+Zainstaluj projekt w trybie editable:
 
 ```powershell
 python -m pip install -e ".[dev]"
+```
+
+Sprawdź entry point:
+
+```powershell
 data-quality-gate --version
 ```
 
-Validate configuration only:
-
-```powershell
-data-quality-gate validate migration.yaml
-```
-
-Run the quality gate:
-
-```powershell
-data-quality-gate run migration.yaml
-```
-
-Example summary:
+Oczekiwany wynik:
 
 ```text
-Migration: legacy-payments-to-new-payments
-Status: FAIL
-
-Checks: 23
-Passed: 14
-Warnings: 1
-Failed: 8
-
-Deployment decision: BLOCK
-JSON report: reports/legacy-payments-to-new-payments-<run-id>.json
+data-quality-gate 0.1.0
 ```
 
-## Exit Codes
+[↑ Powrót do spisu treści](#spis-treści)
 
-- `0`: all checks passed, deployment decision `ALLOW`
-- `1`: at least one warning and no failures, deployment decision `REVIEW`
-- `2`: at least one failure, deployment decision `BLOCK`
-- `3`: invalid configuration
-- `4`: technical or database failure
+---
 
-## YAML Configuration
+## Konfiguracja YAML
 
-`migration.yaml` uses database aliases instead of connection strings. Connection strings are read from `DQG_SOURCE_DB_URL` and `DQG_TARGET_DB_URL`. CLI errors do not print passwords or full connection strings.
+Plik `migration.yaml` definiuje nazwę migracji, aliasy baz danych, limit próbek oraz listę tabel i kontroli.
 
-Example table configuration:
+Fragment konfiguracji dla `transactions`:
 
 ```yaml
 tables:
@@ -183,11 +326,132 @@ tables:
         not_null: true
 ```
 
-Configuration validation rejects unsupported check names, duplicate checks, invalid sample limits, empty allow lists, duplicate allowed values, broken references, and checks that do not have the required column metadata.
+Walidacja konfiguracji odrzuca między innymi:
 
-## Example New Check Results
+- nieobsługiwane nazwy kontroli,
+- duplikaty kontroli w jednej tabeli,
+- `sample_limit < 1`,
+- pustą listę `allowed_values`,
+- duplikaty w `allowed_values`,
+- referencję do nieistniejącej tabeli albo kolumny,
+- `null_check` bez żadnej kolumny `not_null: true`,
+- `allowed_values` bez żadnej skonfigurowanej listy wartości,
+- `referential_integrity` bez żadnej relacji `references`,
+- `schema_match` bez konfiguracji kolumn.
 
-Representative JSON result snippets:
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Walidacja konfiguracji
+
+Walidacja sprawdza wyłącznie YAML i nie łączy się z bazami:
+
+```powershell
+data-quality-gate validate migration.yaml
+```
+
+Przykładowy rzeczywisty output:
+
+```text
+Configuration is valid: migration.yaml
+```
+
+Błąd konfiguracji zwraca kod wyjścia `3` i jest wypisywany bez pełnego tracebacka.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Uruchomienie gate
+
+Uruchom pełną walidację migracji:
+
+```powershell
+data-quality-gate run migration.yaml
+```
+
+Przykładowy rzeczywisty output dla danych demonstracyjnych:
+
+```text
+Migration: legacy-payments-to-new-payments
+Status: FAIL
+
+Checks: 23
+Passed: 14
+Warnings: 1
+Failed: 8
+
+Deployment decision: BLOCK
+JSON report: reports/legacy-payments-to-new-payments-<run-id>.json
+```
+
+Zawartość tego bloku pozostaje po angielsku, ponieważ aplikacja faktycznie wypisuje komunikaty CLI po angielsku.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Statusy decyzje i kody wyjścia
+
+Statusy kontroli:
+
+- `PASS` oznacza, że dana kontrola nie znalazła problemu.
+- `WARN` oznacza wynik wymagający przeglądu, ale niekoniecznie blokujący migrację.
+- `FAIL` oznacza błąd blokujący.
+
+Agregacja statusu migracji:
+
+- jeśli istnieje co najmniej jeden `FAIL`, wynik końcowy to `FAIL`,
+- jeśli nie ma `FAIL`, ale istnieje co najmniej jeden `WARN`, wynik końcowy to `WARN`,
+- jeśli wszystkie kontrole mają `PASS`, wynik końcowy to `PASS`.
+
+Decyzja wdrożeniowa:
+
+| Status | Decyzja | Znaczenie |
+| ------ | ------- | --------- |
+| `PASS` | `ALLOW` | Migracja może przejść dalej. |
+| `WARN` | `REVIEW` | Migracja wymaga przeglądu. |
+| `FAIL` | `BLOCK` | Migracja powinna zostać zablokowana. |
+
+Kody wyjścia:
+
+| Kod | Znaczenie |
+| --- | --------- |
+| `0` | `PASS` |
+| `1` | `WARN` |
+| `2` | `FAIL` |
+| `3` | niepoprawna konfiguracja |
+| `4` | błąd techniczny albo błąd połączenia z bazą |
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Raport JSON
+
+Po każdym technicznie udanym uruchomieniu `run` narzędzie zapisuje raport JSON w katalogu `reports/`.
+
+Raport zawiera:
+
+- `schema_version`, obecnie `0.1`,
+- `summary`,
+- `failed_checks`,
+- pełną listę `results`.
+
+Model `CheckResult` zachowuje stały publiczny kontrakt:
+
+- `check_name`,
+- `table`,
+- `status`,
+- `discrepancy_count`,
+- `message`,
+- `sample_records`,
+- `duration_ms`.
+
+Milestone 2A dodaje nowe wartości `check_name`, ale nie zmienia struktury raportu. Raport nie zawiera haseł, connection stringów ani surowych danych uwierzytelniających.
+
+Przykładowy fragment wyniku `schema_match`:
 
 ```json
 {
@@ -205,6 +469,8 @@ Representative JSON result snippets:
   ]
 }
 ```
+
+Przykładowy fragment wyniku `referential_integrity`:
 
 ```json
 {
@@ -224,7 +490,13 @@ Representative JSON result snippets:
 }
 ```
 
-## Quality Commands
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Testy i quality gates
+
+Podstawowe komendy jakości:
 
 ```powershell
 .\.venv\Scripts\python.exe -m ruff check .
@@ -237,23 +509,74 @@ Representative JSON result snippets:
   --cov-fail-under=85
 ```
 
-Integration tests require running PostgreSQL containers and the two connection variables:
+Testy integracyjne wymagają działających kontenerów PostgreSQL i ustawionych zmiennych `DQG_SOURCE_DB_URL` oraz `DQG_TARGET_DB_URL`:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -m integration
 ```
 
-## Public Report Models
+[↑ Powrót do spisu treści](#spis-treści)
 
-The JSON report schema version remains `0.1`. Milestone 2A adds new `check_name` values but does not change the existing public shape of `CheckResult`, `MigrationSummary`, or `MigrationReport`.
+---
 
-Public models:
+## Struktura projektu
 
-- `CheckStatus`: `PASS`, `WARN`, `FAIL`
-- `CheckResult`: check name, table, status, discrepancy count, message, sample records, duration
-- `MigrationSummary`: migration status, deployment decision, counts, timestamps, duration
-- `MigrationReport`: schema version, summary, failed checks, all results
+Najważniejsze elementy repozytorium:
 
-## Milestone 2A Limitations
+```text
+compose.yaml
+Dockerfile
+pyproject.toml
+README.md
+migration.yaml
+docker/
+  source/
+  target/
+data_quality_gate/
+  cli.py
+  config.py
+  database.py
+  engine.py
+  models.py
+  reporting.py
+  checks/
+tests/
+reports/
+```
 
-This is not a production release. It does not compare all column values, does not apply numeric tolerances, does not calculate checksums, does not generate HTML reports, does not run in GitHub Actions, and does not publish anything to GitHub. It is intentionally small so the quality gate behavior is easy to inspect and extend.
+Katalog `reports/` przechowuje raporty runtime, ale pliki JSON z raportami są ignorowane przez Git. W repozytorium pozostaje tylko `reports/.gitkeep`.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Ograniczenia Milestone 2A
+
+To nie jest wersja produkcyjna. Aktualny zakres świadomie pomija:
+
+- `column_comparison`,
+- `numeric_tolerance`,
+- `checksum`,
+- raport HTML,
+- GitHub Actions,
+- publikację na GitHub,
+- tagi i release.
+
+Projekt nie wykonuje jeszcze pełnego porównania wartości wszystkich kolumn. Koncentruje się na kontrolach strukturalnych, kluczach logicznych, podstawowych regułach domenowych i integralności referencyjnej.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Planowane kolejne kontrole
+
+Naturalne kolejne kroki to:
+
+- `column_comparison` do porównywania wartości kolumn między source i target,
+- `numeric_tolerance` do porównań liczbowych z tolerancją,
+- `checksum` do szybkiego porównywania większych zbiorów danych,
+- raport HTML jako wygodniejsza forma przeglądu wyników.
+
+Te elementy nie są jeszcze zaimplementowane i nie powinny być traktowane jako gotowa funkcjonalność.
+
+[↑ Powrót do spisu treści](#spis-treści)
