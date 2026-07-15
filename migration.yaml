@@ -15,20 +15,35 @@ tables:
       - schema_match
       - null_check
       - allowed_values
+      - column_comparison
+      - checksum
 
     columns:
       customer_id:
         not_null: true
       full_name:
         not_null: true
+        compare: true
       email:
         not_null: true
+        compare: true
       country_code:
+        compare: true
         allowed_values:
           - PL
           - DE
           - CZ
           - SK
+      created_at:
+        compare: true
+
+    checksum:
+      columns:
+        - customer_id
+        - full_name
+        - email
+        - country_code
+        - created_at
 
   accounts:
     primary_key: account_id
@@ -41,22 +56,43 @@ tables:
       - null_check
       - allowed_values
       - referential_integrity
+      - column_comparison
+      - numeric_tolerance
+      - checksum
 
     columns:
       account_id:
         not_null: true
       customer_id:
         not_null: true
+        compare: true
         references:
           table: customers
           column: customer_id
+      account_type:
+        compare: true
       currency:
         not_null: true
+        compare: true
         allowed_values:
           - PLN
           - EUR
           - USD
           - CZK
+      balance:
+        compare: true
+        tolerance: 0.01
+      opened_at:
+        compare: true
+
+    checksum:
+      columns:
+        - account_id
+        - customer_id
+        - account_type
+        - currency
+        - balance
+        - opened_at
 
   transactions:
     primary_key: transaction_id
@@ -69,28 +105,52 @@ tables:
       - null_check
       - allowed_values
       - referential_integrity
+      - column_comparison
+      - numeric_tolerance
+      - checksum
 
     columns:
       transaction_id:
         not_null: true
       account_id:
         not_null: true
+        compare: true
         references:
           table: accounts
           column: account_id
       customer_id:
         not_null: true
+        compare: true
         references:
           table: customers
           column: customer_id
       amount:
         not_null: true
+        compare: true
+        tolerance: 0.01
       currency:
         not_null: true
+        compare: true
         allowed_values:
           - PLN
           - EUR
           - USD
           - CZK
+      transaction_type:
+        compare: true
+      description:
+        compare: true
       occurred_at:
         not_null: true
+        compare: true
+
+    checksum:
+      columns:
+        - transaction_id
+        - account_id
+        - customer_id
+        - amount
+        - currency
+        - transaction_type
+        - description
+        - occurred_at

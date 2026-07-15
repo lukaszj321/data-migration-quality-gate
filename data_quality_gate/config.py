@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from enum import StrEnum
 from pathlib import Path
 from typing import Any
@@ -24,6 +25,9 @@ class CheckName(StrEnum):
     NULL_CHECK = "null_check"
     ALLOWED_VALUES = "allowed_values"
     REFERENTIAL_INTEGRITY = "referential_integrity"
+    COLUMN_COMPARISON = "column_comparison"
+    NUMERIC_TOLERANCE = "numeric_tolerance"
+    CHECKSUM = "checksum"
 
 
 class MigrationConfig(BaseModel):
@@ -74,6 +78,8 @@ class ColumnConfig(BaseModel):
     not_null: bool = False
     allowed_values: list[str] | None = None
     references: ReferenceConfig | None = None
+    compare: bool = False
+    tolerance: Decimal | None = None
 
     @field_validator("allowed_values")
     @classmethod
@@ -97,6 +103,44 @@ class ColumnConfig(BaseModel):
             raise ValueError(f"duplicate allowed values are not allowed: {duplicate_list}")
         return normalized
 
+    @field_validator("tolerance")
+    @classmethod
+    def tolerance_must_not_be_negative(cls, value: Decimal | None) -> Decimal | None:
+        if value is not None and value < 0:
+            raise ValueError("tolerance must not be negative")
+        return value
+
+    @model_validator(mode="after")
+    def tolerance_requires_compare(self) -> ColumnConfig:
+        if self.tolerance is not None and not self.compare:
+            raise ValueError("tolerance requires compare: true")
+        return self
+
+
+class ChecksumConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    columns: list[str] = Field(min_length=1)
+
+    @field_validator("columns")
+    @classmethod
+    def checksum_columns_must_be_identifiers(cls, columns: list[str]) -> list[str]:
+        seen: set[str] = set()
+        duplicates: list[str] = []
+        normalized: list[str] = []
+        for column in columns:
+            stripped = column.strip()
+            if not IDENTIFIER_PATTERN.fullmatch(stripped):
+                raise ValueError(f"checksum column '{column}' must be a SQL identifier")
+            if stripped in seen:
+                duplicates.append(stripped)
+            seen.add(stripped)
+            normalized.append(stripped)
+        if duplicates:
+            duplicate_list = ", ".join(sorted(set(duplicates)))
+            raise ValueError(f"duplicate checksum columns are not allowed: {duplicate_list}")
+        return normalized
+
 
 class TableConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -104,6 +148,7 @@ class TableConfig(BaseModel):
     primary_key: str = Field(min_length=1)
     checks: list[CheckName] = Field(min_length=1)
     columns: dict[str, ColumnConfig] = Field(default_factory=dict)
+    checksum: ChecksumConfig | None = None
 
     @field_validator("primary_key")
     @classmethod
@@ -141,6 +186,8 @@ class TableConfig(BaseModel):
 
     @model_validator(mode="after")
     def check_requirements_must_have_column_config(self) -> TableConfig:
+        if self.columns and self.primary_key not in self.columns:
+            raise ValueError("primary_key must be present in configured columns")
         if CheckName.SCHEMA_MATCH in self.checks and not self.columns:
             raise ValueError("schema_match requires at least one configured column")
         if CheckName.NULL_CHECK in self.checks and not any(
@@ -159,6 +206,25 @@ class TableConfig(BaseModel):
             raise ValueError(
                 "referential_integrity requires at least one column with references configured"
             )
+        if CheckName.COLUMN_COMPARISON in self.checks and not any(
+            column.compare and column.tolerance is None for column in self.columns.values()
+        ):
+            raise ValueError(
+                "column_comparison requires at least one column with compare: true and no tolerance"
+            )
+        if CheckName.NUMERIC_TOLERANCE in self.checks and not any(
+            column.tolerance is not None for column in self.columns.values()
+        ):
+            raise ValueError("numeric_tolerance requires at least one column with tolerance")
+        if CheckName.CHECKSUM in self.checks:
+            if self.checksum is None:
+                raise ValueError("checksum requires checksum configuration")
+            missing_columns = [
+                column for column in self.checksum.columns if column not in self.columns
+            ]
+            if missing_columns:
+                missing = ", ".join(sorted(missing_columns))
+                raise ValueError(f"checksum references unknown configured columns: {missing}")
         return self
 
 

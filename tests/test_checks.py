@@ -4,9 +4,12 @@ from sqlalchemy import Engine, text
 
 from data_quality_gate.checks import (
     allowed_values,
+    checksum,
+    column_comparison,
     duplicate_keys,
     missing_keys,
     null_check,
+    numeric_tolerance,
     referential_integrity,
     row_count,
     schema_match,
@@ -175,6 +178,119 @@ def test_schema_match_compares_loaded_schemas(
     ]
 
 
+def test_column_comparison_detects_exact_differences_and_skips_uncomparable_keys(
+    sqlite_pair: tuple[Engine, Engine],
+) -> None:
+    source, target = sqlite_pair
+    _insert(source, ["A", "B", "D", "D"])
+    _insert(target, ["A", "C", "D", "D"])
+    with target.begin() as connection:
+        connection.execute(text("UPDATE items SET payload = 'changed' WHERE item_id = 'A'"))
+
+    result = column_comparison.run(_exact_context(source, target, sample_limit=5))
+
+    assert result.status == CheckStatus.FAIL
+    assert result.discrepancy_count == 1
+    assert result.sample_records == [
+        {
+            "primary_key": "A",
+            "column": "payload",
+            "source_value": "payload-A",
+            "target_value": "changed",
+        }
+    ]
+    assert "duplicate_source=1" in result.message
+    assert "duplicate_target=1" in result.message
+
+
+def test_column_comparison_treats_both_nulls_as_equal(sqlite_pair: tuple[Engine, Engine]) -> None:
+    source, target = sqlite_pair
+    _insert(source, ["A"])
+    _insert(target, ["A"])
+    for engine in (source, target):
+        with engine.begin() as connection:
+            connection.execute(text("UPDATE items SET payload = NULL WHERE item_id = 'A'"))
+
+    result = column_comparison.run(_exact_context(source, target, sample_limit=5))
+
+    assert result.status == CheckStatus.PASS
+
+
+def test_numeric_tolerance_uses_decimal_boundaries(sqlite_pair: tuple[Engine, Engine]) -> None:
+    source, target = sqlite_pair
+    _add_amount_column(source)
+    _add_amount_column(target)
+    _insert(source, ["A", "B", "C"])
+    _insert(target, ["A", "B", "C"])
+    with source.begin() as connection:
+        connection.execute(text("UPDATE items SET amount = '10.00'"))
+    with target.begin() as connection:
+        connection.execute(text("UPDATE items SET amount = '10.005' WHERE item_id = 'A'"))
+        connection.execute(text("UPDATE items SET amount = '10.01' WHERE item_id = 'B'"))
+        connection.execute(text("UPDATE items SET amount = '10.02' WHERE item_id = 'C'"))
+
+    result = numeric_tolerance.run(_numeric_context(source, target, sample_limit=5))
+
+    assert result.status == CheckStatus.FAIL
+    assert result.discrepancy_count == 1
+    assert result.sample_records[0]["primary_key"] == "C"
+    assert result.sample_records[0]["difference"] == "0.02"
+
+
+def test_numeric_tolerance_handles_null_mismatch(sqlite_pair: tuple[Engine, Engine]) -> None:
+    source, target = sqlite_pair
+    _add_amount_column(source)
+    _add_amount_column(target)
+    _insert(source, ["A"])
+    _insert(target, ["A"])
+    with source.begin() as connection:
+        connection.execute(text("UPDATE items SET amount = NULL WHERE item_id = 'A'"))
+    with target.begin() as connection:
+        connection.execute(text("UPDATE items SET amount = '1.00' WHERE item_id = 'A'"))
+
+    result = numeric_tolerance.run(_numeric_context(source, target, sample_limit=5))
+
+    assert result.status == CheckStatus.FAIL
+    assert result.sample_records[0]["difference"] is None
+
+
+def test_checksum_detects_changes_and_is_deterministic(sqlite_pair: tuple[Engine, Engine]) -> None:
+    source, target = sqlite_pair
+    _insert(source, ["B", "A"])
+    _insert(target, ["A", "B"])
+
+    first = checksum.run(_checksum_context(source, target))
+    second = checksum.run(_checksum_context(source, target))
+
+    assert first.status == CheckStatus.PASS
+    assert first.sample_records[0]["source_checksum"] == first.sample_records[0]["target_checksum"]
+    assert first.sample_records == second.sample_records
+
+    with target.begin() as connection:
+        connection.execute(text("UPDATE items SET payload = 'different' WHERE item_id = 'A'"))
+
+    changed = checksum.run(_checksum_context(source, target))
+
+    assert changed.status == CheckStatus.FAIL
+    assert changed.discrepancy_count == 1
+
+
+def test_checksum_distinguishes_naive_string_collision(
+    sqlite_pair: tuple[Engine, Engine],
+) -> None:
+    source, target = sqlite_pair
+    _insert(source, ["A"])
+    _insert(target, ["A"])
+    with source.begin() as connection:
+        connection.execute(text("UPDATE items SET payload = 'ab|c' WHERE item_id = 'A'"))
+    with target.begin() as connection:
+        connection.execute(text("UPDATE items SET payload = 'a|bc' WHERE item_id = 'A'"))
+
+    result = checksum.run(_checksum_context(source, target))
+
+    assert result.status == CheckStatus.FAIL
+
+
 def _context(source: Engine, target: Engine, sample_limit: int) -> CheckContext:
     return CheckContext(
         source_engine=source,
@@ -253,6 +369,66 @@ def _schema_configured_context(source: Engine, target: Engine) -> CheckContext:
     )
 
 
+def _exact_context(source: Engine, target: Engine, sample_limit: int) -> CheckContext:
+    table_config = TableConfig(
+        primary_key="item_id",
+        checks=[CheckName.COLUMN_COMPARISON],
+        columns={
+            "item_id": ColumnConfig(not_null=True),
+            "payload": ColumnConfig(compare=True),
+        },
+    )
+    return CheckContext(
+        source_engine=source,
+        target_engine=target,
+        table="items",
+        primary_key="item_id",
+        sample_limit=sample_limit,
+        table_config=table_config,
+        all_tables={"items": table_config},
+    )
+
+
+def _numeric_context(source: Engine, target: Engine, sample_limit: int) -> CheckContext:
+    table_config = TableConfig(
+        primary_key="item_id",
+        checks=[CheckName.NUMERIC_TOLERANCE],
+        columns={
+            "item_id": ColumnConfig(not_null=True),
+            "amount": ColumnConfig(compare=True, tolerance="0.01"),
+        },
+    )
+    return CheckContext(
+        source_engine=source,
+        target_engine=target,
+        table="items",
+        primary_key="item_id",
+        sample_limit=sample_limit,
+        table_config=table_config,
+        all_tables={"items": table_config},
+    )
+
+
+def _checksum_context(source: Engine, target: Engine) -> CheckContext:
+    table_config = TableConfig.model_validate(
+        {
+            "primary_key": "item_id",
+            "checks": [CheckName.CHECKSUM],
+            "columns": {"item_id": {}, "payload": {}},
+            "checksum": {"columns": ["item_id", "payload"]},
+        }
+    )
+    return CheckContext(
+        source_engine=source,
+        target_engine=target,
+        table="items",
+        primary_key="item_id",
+        sample_limit=5,
+        table_config=table_config,
+        all_tables={"items": table_config},
+    )
+
+
 def _insert(engine: Engine, keys: list[str]) -> None:
     with engine.begin() as connection:
         for key in keys:
@@ -260,3 +436,8 @@ def _insert(engine: Engine, keys: list[str]) -> None:
                 text("INSERT INTO items (item_id, payload) VALUES (:key, :payload)"),
                 {"key": key, "payload": f"payload-{key}"},
             )
+
+
+def _add_amount_column(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.execute(text("ALTER TABLE items ADD COLUMN amount NUMERIC"))

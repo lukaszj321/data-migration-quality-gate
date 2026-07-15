@@ -152,6 +152,39 @@ tables:
     assert config.tables["accounts"].columns["customer_id"].references is not None
 
 
+def test_loads_valid_compare_tolerance_and_checksum_configuration(tmp_path: Path) -> None:
+    path = tmp_path / "migration.yaml"
+    path.write_text(
+        """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [column_comparison, numeric_tolerance, checksum]
+    columns:
+      account_id:
+        not_null: true
+      account_type:
+        compare: true
+      balance:
+        compare: true
+        tolerance: 0.01
+    checksum:
+      columns: [account_id, account_type, balance]
+""".strip(),
+        encoding="utf-8",
+    )
+
+    config = load_config(path)
+
+    assert config.tables["accounts"].columns["account_type"].compare is True
+    assert str(config.tables["accounts"].columns["balance"].tolerance) == "0.01"
+    assert config.tables["accounts"].checksum is not None
+
+
 @pytest.mark.parametrize(
     ("body", "expected"),
     [
@@ -198,6 +231,7 @@ tables:
     primary_key: account_id
     checks: [referential_integrity]
     columns:
+      account_id: {}
       customer_id:
         references:
           table: customers
@@ -221,6 +255,7 @@ tables:
     primary_key: account_id
     checks: [referential_integrity]
     columns:
+      account_id: {}
       customer_id:
         references:
           table: customers
@@ -287,6 +322,186 @@ tables:
     checks: [schema_match]
 """,
             "schema_match requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [numeric_tolerance]
+    columns:
+      account_id: {}
+      balance:
+        compare: true
+        tolerance: -0.01
+""",
+            "tolerance must not be negative",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [numeric_tolerance]
+    columns:
+      account_id: {}
+      balance:
+        tolerance: 0.01
+""",
+            "tolerance requires compare",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [numeric_tolerance]
+    columns:
+      account_id: {}
+      balance:
+        compare: true
+""",
+            "numeric_tolerance requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [column_comparison]
+    columns:
+      account_id: {}
+      balance:
+        compare: true
+        tolerance: 0.01
+""",
+            "column_comparison requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [checksum]
+    columns:
+      account_id: {}
+""",
+            "checksum requires",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [checksum]
+    columns:
+      account_id: {}
+    checksum:
+      columns: []
+""",
+            "checksum.columns",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [checksum]
+    columns:
+      account_id: {}
+      account_type: {}
+    checksum:
+      columns: [account_id, account_id]
+""",
+            "duplicate checksum columns",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [checksum]
+    columns:
+      account_id: {}
+    checksum:
+      columns: [account_id, missing_column]
+""",
+            "unknown configured columns",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: missing_id
+    checks: [schema_match]
+    columns:
+      account_id: {}
+""",
+            "primary_key must be present",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  "accounts;DROP":
+    primary_key: account_id
+    checks: [row_count]
+""",
+            "table name",
+        ),
+        (
+            """
+migration:
+  name: test
+  source: source_db
+  target: target_db
+tables:
+  accounts:
+    primary_key: account_id
+    checks: [schema_match]
+    columns:
+      "account_id --": {}
+""",
+            "column name",
         ),
     ],
 )

@@ -10,9 +10,12 @@ from sqlalchemy import Engine
 
 from data_quality_gate.checks import (
     allowed_values,
+    checksum,
+    column_comparison,
     duplicate_keys,
     missing_keys,
     null_check,
+    numeric_tolerance,
     referential_integrity,
     row_count,
     schema_match,
@@ -41,6 +44,9 @@ CHECK_REGISTRY: dict[CheckName, CheckFunction] = {
     CheckName.NULL_CHECK: null_check.run,
     CheckName.ALLOWED_VALUES: allowed_values.run,
     CheckName.REFERENTIAL_INTEGRITY: referential_integrity.run,
+    CheckName.COLUMN_COMPARISON: column_comparison.run,
+    CheckName.NUMERIC_TOLERANCE: numeric_tolerance.run,
+    CheckName.CHECKSUM: checksum.run,
 }
 
 
