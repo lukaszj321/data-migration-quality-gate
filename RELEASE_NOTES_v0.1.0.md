@@ -86,8 +86,8 @@ The HTML report is generated from the same report model. It is a single self-con
 ## Limitations
 
 - PostgreSQL only.
-- No GitHub Actions yet.
-- No public GitHub Release yet.
+- No package publication to PyPI.
+- No published container image or container registry integration.
 - No HTTP API.
 - No hosted dashboard.
 - No React frontend.
