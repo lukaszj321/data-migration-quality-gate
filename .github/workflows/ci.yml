@@ -117,24 +117,24 @@ jobs:
       - name: Build wheel and sdist
         run: |
           python -m build
-          test -f dist/data_migration_quality_gate-0.1.0-py3-none-any.whl
-          test -f dist/data_migration_quality_gate-0.1.0.tar.gz
+          test -f dist/data_migration_quality_gate-0.1.1-py3-none-any.whl
+          test -f dist/data_migration_quality_gate-0.1.1.tar.gz
 
       - name: Install wheel in clean virtualenv
         run: |
           python -m venv /tmp/dqg-wheel-test
           /tmp/dqg-wheel-test/bin/python -m pip install --upgrade pip
-          /tmp/dqg-wheel-test/bin/python -m pip install dist/data_migration_quality_gate-0.1.0-py3-none-any.whl
+          /tmp/dqg-wheel-test/bin/python -m pip install dist/data_migration_quality_gate-0.1.1-py3-none-any.whl
           version_output="$(/tmp/dqg-wheel-test/bin/data-quality-gate --version)"
-          test "${version_output}" = "data-quality-gate 0.1.0"
+          test "${version_output}" = "data-quality-gate 0.1.1"
           /tmp/dqg-wheel-test/bin/data-quality-gate validate migration.yaml
 
       - name: Docker build
-        run: docker build -t data-migration-quality-gate:0.1.0 .
+        run: docker build -t data-migration-quality-gate:0.1.1 .
 
       - name: Docker smoke test
         run: |
-          docker_output="$(docker run --rm data-migration-quality-gate:0.1.0 --version)"
-          test "${docker_output}" = "data-quality-gate 0.1.0"
-          container_user="$(docker run --rm --entrypoint id data-migration-quality-gate:0.1.0 -u)"
+          docker_output="$(docker run --rm data-migration-quality-gate:0.1.1 --version)"
+          test "${docker_output}" = "data-quality-gate 0.1.1"
+          container_user="$(docker run --rm --entrypoint id data-migration-quality-gate:0.1.1 -u)"
           test "${container_user}" != "0"

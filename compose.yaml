@@ -35,7 +35,7 @@ services:
 
   quality-gate:
     build: .
-    image: data-migration-quality-gate:0.1.0
+    image: data-migration-quality-gate:0.1.1
     profiles:
       - runner
     depends_on:

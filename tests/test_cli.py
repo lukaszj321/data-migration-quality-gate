@@ -32,7 +32,7 @@ def test_version_returns_project_version(capsys) -> None:  # type: ignore[no-unt
         cli.main(["--version"])
 
     assert exc_info.value.code == cli.EXIT_PASS
-    assert "data-quality-gate 0.1.0" in capsys.readouterr().out
+    assert "data-quality-gate 0.1.1" in capsys.readouterr().out
 
 
 def test_validate_returns_invalid_config_for_bad_config(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]

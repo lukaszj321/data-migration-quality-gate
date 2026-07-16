@@ -104,8 +104,8 @@ def comparable_row_pairs(
             continue
         if source is None or target is None:
             continue
-        source_key = str(source["primary_key"])
-        target_key = str(target["primary_key"])
+        source_key = source["primary_key"]
+        target_key = target["primary_key"]
         if source_key == target_key:
             yield ComparableRows(source=source, target=target)
             source = _next_row(source_rows)

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.1] - 2026-07-16
+
+### Fixed
+
+- Preserved consistent logical-key ordering when comparing PostgreSQL source and target streams.
+- Fixed false missing or unexpected key results for numeric logical keys such as `1`, `2`, `10`, and `11`.
+- Fixed row pairing for `column_comparison` and `numeric_tolerance` when logical keys are numeric.
+
+### Tests
+
+- Added PostgreSQL integration coverage for integer logical keys.
+
 ## [0.1.0] - 2026-07-16
 
 ### Added

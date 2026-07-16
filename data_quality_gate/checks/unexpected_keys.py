@@ -9,6 +9,7 @@ from typing import Any
 from sqlalchemy.exc import SQLAlchemyError
 
 from data_quality_gate.checks.base import CheckContext, sorted_unique_key_rows, timed_result
+from data_quality_gate.checks.comparison_utils import sample_value
 from data_quality_gate.exceptions import CheckExecutionError
 from data_quality_gate.models import CheckResult, CheckStatus
 
@@ -39,11 +40,11 @@ def run(context: CheckContext) -> CheckResult:
     )
 
 
-def _target_only_keys(context: CheckContext) -> tuple[int, list[dict[str, str]]]:
+def _target_only_keys(context: CheckContext) -> tuple[int, list[dict[str, Any]]]:
     source_rows = sorted_unique_key_rows(context.source_engine, context.table, context.primary_key)
     target_rows = sorted_unique_key_rows(context.target_engine, context.table, context.primary_key)
     count = 0
-    samples: list[dict[str, str]] = []
+    samples: list[dict[str, Any]] = []
 
     try:
         source_value = _next_key(source_rows)
@@ -53,7 +54,7 @@ def _target_only_keys(context: CheckContext) -> tuple[int, list[dict[str, str]]]
             if source_value is None or target_value < source_value:
                 count += 1
                 if len(samples) < context.sample_limit:
-                    samples.append({context.primary_key: target_value})
+                    samples.append({context.primary_key: sample_value(target_value)})
                 target_value = _next_key(target_rows)
             elif source_value == target_value:
                 source_value = _next_key(source_rows)
@@ -67,9 +68,9 @@ def _target_only_keys(context: CheckContext) -> tuple[int, list[dict[str, str]]]
     return count, samples
 
 
-def _next_key(rows: Iterator[Any]) -> str | None:
+def _next_key(rows: Iterator[Any]) -> Any | None:
     try:
         row = next(rows)
     except StopIteration:
         return None
-    return str(row.key_value)
+    return row.key_value

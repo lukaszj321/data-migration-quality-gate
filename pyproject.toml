@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "data-migration-quality-gate"
-version = "0.1.0"
+version = "0.1.1"
 description = "CLI quality gate for validating PostgreSQL data migrations."
 readme = "README.md"
 requires-python = ">=3.12"

@@ -2,13 +2,13 @@
 
 [![CI](https://github.com/lukaszj321/data-migration-quality-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/lukaszj321/data-migration-quality-gate/actions/workflows/ci.yml)
 
-Aktualna wersja: `0.1.0`
+Aktualna wersja: `0.1.1`
 
-Release: <https://github.com/lukaszj321/data-migration-quality-gate/releases/tag/v0.1.0>
+Release: <https://github.com/lukaszj321/data-migration-quality-gate/releases/tag/v0.1.1>
 
 Data Migration Quality Gate to narzędzie CLI pełniące rolę bramki jakości migracji, czyli `quality gate`, dla migracji danych pomiędzy dwiema bazami PostgreSQL. Porównuje bazę źródłową z bazą docelową, wykonuje zestaw kontroli jakości i zwraca decyzję wdrożeniową: `ALLOW`, `REVIEW` albo `BLOCK`.
 
-Projekt jest aktualnie w wersji `0.1.0`. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML, pakiet Python oraz uruchamianie przez hosta albo kontener CLI.
+Projekt jest aktualnie w wersji `0.1.1`. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML, pakiet Python oraz uruchamianie przez hosta albo kontener CLI.
 
 ## Spis treści
 
@@ -33,7 +33,7 @@ Projekt jest aktualnie w wersji `0.1.0`. Implementuje działający pionowy fragm
 - [Raport HTML](#raport-html)
 - [Testy i quality gates](#testy-i-quality-gates)
 - [Struktura projektu](#struktura-projektu)
-- [Ograniczenia wersji 0.1.0](#ograniczenia-wersji-010)
+- [Ograniczenia wersji 0.1.1](#ograniczenia-wersji-011)
 - [Planowane kolejne kroki](#planowane-kolejne-kroki)
 
 ---
@@ -101,13 +101,14 @@ flowchart LR
 
 ## Aktualny zakres
 
-Wersja `0.1.0` obejmuje:
+Wersja `0.1.1` obejmuje:
 
 - CLI `data-quality-gate`,
 - walidację konfiguracji YAML,
 - połączenie z dwiema bazami PostgreSQL,
 - jedenaście typów kontroli jakości danych,
 - porównywanie wartości kolumn między source i target,
+- poprawne parowanie rekordów dla tekstowych oraz liczbowych kluczy logicznych, w tym `INTEGER`,
 - tolerancję liczbową opartą o `Decimal`, bez użycia `float`,
 - checksum dla deterministycznego porównywania całych zestawów kolumn,
 - agregację wyników do `PASS`, `WARN` albo `FAIL`,
@@ -120,7 +121,7 @@ Wersja `0.1.0` obejmuje:
 - testy jednostkowe i integracyjne,
 - lokalne środowisko demonstracyjne w Docker Compose.
 
-Wersja aplikacji to `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`.
+Wersja aplikacji to `0.1.1`. Wersja schematu raportu JSON pozostaje `0.1`.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -176,7 +177,7 @@ Tak jak `column_comparison`, kontrola działa tylko na rekordach porównywalnych
 
 Liczy deterministyczny SHA-256 dla skonfigurowanej listy kolumn. Każda wartość jest serializowana razem z typem, a wiersze są porządkowane po logicznym kluczu i hashu wiersza. Dzięki temu checksum odróżnia naiwne kolizje tekstowe, obsługuje `NULL`, liczby i daty oraz jest stabilny między powtarzalnymi uruchomieniami.
 
-`checksum` porównuje cały skonfigurowany zbiór, więc reaguje także na brakujące, nadmiarowe i zduplikowane rekordy. Szczegółową przyczynę takich problemów należy czytać razem z kontrolami kluczy.
+`checksum` porównuje cały skonfigurowany zbiór, więc reaguje także na brakujące, nadmiarowe i zduplikowane rekordy. Szczegółową przyczynę takich problemów należy czytać razem z kontrolami kluczy. Kontrola pełnego checksumu jest deterministyczna, ale w tej wersji nie jest zoptymalizowana pod wielomilionowe tabele.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -291,13 +292,13 @@ data-quality-gate --version
 Oczekiwany wynik:
 
 ```text
-data-quality-gate 0.1.0
+data-quality-gate 0.1.1
 ```
 
 Projekt można też zainstalować z lokalnego wheel zbudowanego z repozytorium:
 
 ```powershell
-python -m pip install dist\data_migration_quality_gate-0.1.0-py3-none-any.whl
+python -m pip install dist\data_migration_quality_gate-0.1.1-py3-none-any.whl
 ```
 
 Plik `migration.yaml` oraz katalogi `docker/` są częścią repozytorium demo. Nie są potrzebne jako moduły importowane przez pakiet Pythona; przy instalacji wheel uruchamiasz CLI z katalogu projektu albo wskazujesz własny plik YAML.
@@ -318,8 +319,8 @@ Remove-Item -Recurse -Force dist, build -ErrorAction SilentlyContinue
 Oczekiwane artefakty lokalne:
 
 ```text
-dist\data_migration_quality_gate-0.1.0-py3-none-any.whl
-dist\data_migration_quality_gate-0.1.0.tar.gz
+dist\data_migration_quality_gate-0.1.1-py3-none-any.whl
+dist\data_migration_quality_gate-0.1.1.tar.gz
 ```
 
 Artefakty `dist/` i `build/` są ignorowane przez Git i nie są commitowane.
@@ -700,7 +701,7 @@ Katalog `reports/` przechowuje raporty runtime, ale pliki JSON i HTML z raportam
 
 ---
 
-## Ograniczenia wersji 0.1.0
+## Ograniczenia wersji 0.1.1
 
 To jest demonstracyjne narzędzie inżynierskie projektu portfolio, nie gotowy system produkcyjny. Aktualny zakres świadomie pomija:
 
