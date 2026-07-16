@@ -4,9 +4,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from sqlalchemy import create_engine
 
 from data_quality_gate import cli
-from data_quality_gate.exceptions import ReportWriteError
+from data_quality_gate.exceptions import (
+    ConfigurationError,
+    DatabaseConnectionError,
+    ReportWriteError,
+)
 from data_quality_gate.models import (
     CheckResult,
     CheckStatus,
@@ -22,12 +27,44 @@ def test_validate_returns_zero_for_valid_config(valid_yaml: Path, capsys) -> Non
     assert "Configuration is valid" in capsys.readouterr().out
 
 
+def test_version_returns_project_version(capsys) -> None:  # type: ignore[no-untyped-def]
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main(["--version"])
+
+    assert exc_info.value.code == cli.EXIT_PASS
+    assert "data-quality-gate 0.1.0" in capsys.readouterr().out
+
+
 def test_validate_returns_invalid_config_for_bad_config(tmp_path: Path, capsys) -> None:  # type: ignore[no-untyped-def]
     path = tmp_path / "bad.yaml"
     path.write_text("migration: {}\ntables: {}\n", encoding="utf-8")
 
     assert cli.main(["validate", str(path)]) == cli.EXIT_INVALID_CONFIG
     assert "Configuration error" in capsys.readouterr().err
+
+
+def test_validate_returns_invalid_config_for_missing_file(capsys) -> None:  # type: ignore[no-untyped-def]
+    assert cli.main(["validate", "missing.yaml"]) == cli.EXIT_INVALID_CONFIG
+
+    captured = capsys.readouterr()
+    assert "Configuration error" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_validate_redacts_secret_from_controlled_configuration_error(
+    monkeypatch, valid_yaml: Path, capsys
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        cli,
+        "load_config",
+        lambda path: (_ for _ in ()).throw(ConfigurationError("password=super-secret-password")),
+    )
+
+    assert cli.main(["validate", str(valid_yaml)]) == cli.EXIT_INVALID_CONFIG
+
+    captured = capsys.readouterr()
+    assert "super-secret-password" not in captured.err
+    assert "[REDACTED]" in captured.err
 
 
 @pytest.mark.parametrize(
@@ -75,6 +112,50 @@ def test_run_returns_technical_failure_for_report_write_error_without_traceback(
     assert "Technical failure: Cannot write HTML report" in captured.err
     assert "Traceback" not in captured.err
     assert "postgresql+psycopg://" not in captured.err
+
+
+def test_run_redacts_secret_from_controlled_database_error(
+    monkeypatch, valid_yaml: Path, capsys
+) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(
+        cli,
+        "run_quality_gate",
+        lambda config: (_ for _ in ()).throw(
+            DatabaseConnectionError(
+                "Cannot connect to "
+                "postgresql+psycopg://demo_user:super-secret-password@localhost/db"
+            )
+        ),
+    )
+
+    assert cli.main(["run", str(valid_yaml)]) == cli.EXIT_TECHNICAL_FAILURE
+
+    captured = capsys.readouterr()
+    assert "super-secret-password" not in captured.err
+    assert "[REDACTED]" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_run_returns_technical_failure_for_unavailable_database(
+    monkeypatch, valid_yaml: Path, capsys
+) -> None:  # type: ignore[no-untyped-def]
+    def fail(config) -> None:  # type: ignore[no-untyped-def]
+        engine = create_engine("sqlite+pysqlite:///Z:/path/that/does/not/exist/db.sqlite")
+        try:
+            with engine.connect():
+                pass
+        except Exception as exc:
+            raise DatabaseConnectionError("Cannot connect to database alias 'source_db'.") from exc
+        finally:
+            engine.dispose()
+
+    monkeypatch.setattr(cli, "run_quality_gate", fail)
+
+    assert cli.main(["run", str(valid_yaml)]) == cli.EXIT_TECHNICAL_FAILURE
+
+    captured = capsys.readouterr()
+    assert "Cannot connect to database alias" in captured.err
+    assert "Traceback" not in captured.err
 
 
 def test_exit_code_for_status() -> None:

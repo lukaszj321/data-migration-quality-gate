@@ -2,7 +2,7 @@
 
 Data Migration Quality Gate to narzędzie CLI pełniące rolę bramki jakości migracji, czyli `quality gate`, dla migracji danych pomiędzy dwiema bazami PostgreSQL. Porównuje bazę źródłową z bazą docelową, wykonuje zestaw kontroli jakości i zwraca decyzję wdrożeniową: `ALLOW`, `REVIEW` albo `BLOCK`.
 
-Projekt jest aktualnie na etapie Milestone 3. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML oraz kody wyjścia przydatne w automatyzacji.
+Projekt jest aktualnie lokalnym release candidate wersji `0.1.0`. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML, pakiet Python oraz uruchamianie przez hosta albo kontener CLI.
 
 ## Spis treści
 
@@ -17,6 +17,8 @@ Projekt jest aktualnie na etapie Milestone 3. Implementuje działający pionowy 
 - [Wymagania](#wymagania)
 - [Uruchomienie baz](#uruchomienie-baz)
 - [Instalacja](#instalacja)
+- [Build pakietu](#build-pakietu)
+- [Docker Compose runner](#docker-compose-runner)
 - [Konfiguracja YAML](#konfiguracja-yaml)
 - [Walidacja konfiguracji](#walidacja-konfiguracji)
 - [Uruchomienie gate](#uruchomienie-gate)
@@ -25,7 +27,7 @@ Projekt jest aktualnie na etapie Milestone 3. Implementuje działający pionowy 
 - [Raport HTML](#raport-html)
 - [Testy i quality gates](#testy-i-quality-gates)
 - [Struktura projektu](#struktura-projektu)
-- [Ograniczenia Milestone 3](#ograniczenia-milestone-3)
+- [Ograniczenia wersji 0.1.0](#ograniczenia-wersji-010)
 - [Planowane kolejne kroki](#planowane-kolejne-kroki)
 
 ---
@@ -93,7 +95,7 @@ flowchart LR
 
 ## Aktualny zakres
 
-Milestone 3 obejmuje:
+Wersja `0.1.0` obejmuje:
 
 - CLI `data-quality-gate`,
 - walidację konfiguracji YAML,
@@ -106,10 +108,13 @@ Milestone 3 obejmuje:
 - decyzję wdrożeniową `ALLOW`, `REVIEW` albo `BLOCK`,
 - raport JSON w katalogu `reports/`,
 - samodzielny raport HTML w katalogu `reports/`,
+- instalowalny pakiet Python,
+- Dockerfile aplikacji CLI,
+- opcjonalny runner `quality-gate` w Docker Compose,
 - testy jednostkowe i integracyjne,
 - lokalne środowisko demonstracyjne w Docker Compose.
 
-Wersja aplikacji pozostaje `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`, ponieważ Milestone 3 dodaje prezentację HTML, ale nie zmienia publicznej struktury raportu JSON.
+Wersja aplikacji to `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -253,11 +258,11 @@ Po starcie oba serwisy powinny być `healthy`:
 Connection stringi nie są zapisywane w `migration.yaml`. Ustaw je przez zmienne środowiskowe:
 
 ```powershell
-$env:DQG_SOURCE_DB_URL="postgresql+psycopg://dqg_demo:dqg_demo_password@localhost:5433/source_db"
-$env:DQG_TARGET_DB_URL="postgresql+psycopg://dqg_demo:dqg_demo_password@localhost:5434/target_db"
+$env:DQG_SOURCE_DB_URL="postgresql+psycopg://dqg_demo:<demo-password>@localhost:5433/source_db"
+$env:DQG_TARGET_DB_URL="postgresql+psycopg://dqg_demo:<demo-password>@localhost:5434/target_db"
 ```
 
-Wartości są demonstracyjne. Prawdziwego pliku `.env` nie należy commitować.
+Wartości są demonstracyjne; konkretne lokalne wartości dla demo znajdują się w `.env.example` oraz `compose.yaml`. Prawdziwego pliku `.env` nie należy commitować.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -265,7 +270,7 @@ Wartości są demonstracyjne. Prawdziwego pliku `.env` nie należy commitować.
 
 ## Instalacja
 
-Zainstaluj projekt w trybie editable:
+Do pracy developerskiej zainstaluj projekt w trybie editable:
 
 ```powershell
 python -m pip install -e ".[dev]"
@@ -282,6 +287,57 @@ Oczekiwany wynik:
 ```text
 data-quality-gate 0.1.0
 ```
+
+Projekt można też zainstalować z lokalnego wheel zbudowanego z repozytorium:
+
+```powershell
+python -m pip install dist\data_migration_quality_gate-0.1.0-py3-none-any.whl
+```
+
+Plik `migration.yaml` oraz katalogi `docker/` są częścią repozytorium demo. Nie są potrzebne jako moduły importowane przez pakiet Pythona; przy instalacji wheel uruchamiasz CLI z katalogu projektu albo wskazujesz własny plik YAML.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Build pakietu
+
+Wyczyść stare artefakty i zbuduj wheel oraz sdist:
+
+```powershell
+Remove-Item -Recurse -Force dist, build -ErrorAction SilentlyContinue
+.\.venv\Scripts\python.exe -m build
+```
+
+Oczekiwane artefakty lokalne:
+
+```text
+dist\data_migration_quality_gate-0.1.0-py3-none-any.whl
+dist\data_migration_quality_gate-0.1.0.tar.gz
+```
+
+Artefakty `dist/` i `build/` są ignorowane przez Git i nie są commitowane.
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Docker Compose runner
+
+Projekt można uruchomić na dwa sposoby:
+
+- na hoście przez `data-quality-gate`,
+- w kontenerze CLI przez opcjonalny profil Docker Compose `runner`.
+
+Uruchom bazy i runner:
+
+```powershell
+docker compose down --volumes --remove-orphans
+docker compose up -d source-db target-db
+docker compose --profile runner run --rm quality-gate run migration.yaml
+```
+
+Runner łączy się z bazami po nazwach usług `source-db` i `target-db`, zapisuje raporty do hostowego katalogu `reports/` i kończy się kodem CLI. Dla demonstracyjnych danych oczekiwany wynik to `FAIL`, decyzja `BLOCK` i kod wyjścia `2`.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -638,9 +694,9 @@ Katalog `reports/` przechowuje raporty runtime, ale pliki JSON i HTML z raportam
 
 ---
 
-## Ograniczenia Milestone 3
+## Ograniczenia wersji 0.1.0
 
-To nie jest wersja produkcyjna. Aktualny zakres świadomie pomija:
+To jest lokalny release candidate projektu portfolio i demonstracyjne narzędzie inżynierskie, nie gotowy system produkcyjny. Aktualny zakres świadomie pomija:
 
 - GitHub Actions,
 - publikację na GitHub,
@@ -651,7 +707,7 @@ To nie jest wersja produkcyjna. Aktualny zakres świadomie pomija:
 - obsługę innych silników baz danych niż PostgreSQL,
 - rozbudowany diff wartości poza limitowanymi próbkami w JSON.
 
-Narzędzie koncentruje się na lokalnym, deterministycznym quality gate dla przykładowej migracji i na czytelnym kontrakcie raportowania.
+Target w danych demonstracyjnych celowo zawiera kontrolowane błędy, aby pokazać decyzję `BLOCK` i komplet raportów. Narzędzie koncentruje się na lokalnym, deterministycznym quality gate dla przykładowej migracji i na czytelnym kontrakcie raportowania.
 
 [↑ Powrót do spisu treści](#spis-treści)
 

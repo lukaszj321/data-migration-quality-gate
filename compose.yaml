@@ -33,6 +33,23 @@ services:
       timeout: 5s
       retries: 12
 
+  quality-gate:
+    build: .
+    image: data-migration-quality-gate:0.1.0
+    profiles:
+      - runner
+    depends_on:
+      source-db:
+        condition: service_healthy
+      target-db:
+        condition: service_healthy
+    environment:
+      DQG_SOURCE_DB_URL: postgresql+psycopg://dqg_demo:dqg_demo_password@source-db:5432/source_db
+      DQG_TARGET_DB_URL: postgresql+psycopg://dqg_demo:dqg_demo_password@target-db:5432/target_db
+    volumes:
+      - ./migration.yaml:/app/migration.yaml:ro
+      - ./reports:/app/reports
+
 volumes:
   source-db-data:
   target-db-data:

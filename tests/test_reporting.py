@@ -61,8 +61,14 @@ def make_report(name: str = "Legacy Payments") -> MigrationReport:
         ("name with spaces", "name-with-spaces"),
         ("../secret", "secret"),
         ("..\\secret", "secret"),
+        ("../../outside", "outside"),
+        ("..\\..\\outside", "outside"),
+        ("/absolute/path", "absolute-path"),
+        ("C:\\absolute\\path", "c-absolute-path"),
         ("a/b\\c", "a-b-c"),
         ("\n\t", "migration"),
+        ("...", "migration"),
+        ("///", "migration"),
         ("CON", "con-migration"),
         ("CON.txt", "con-migration"),
     ],
@@ -86,6 +92,15 @@ def test_create_report_paths_uses_common_base_name(tmp_path: Path) -> None:
     assert paths.json_path.stem == paths.html_path.stem
     assert paths.json_path.suffix == ".json"
     assert paths.html_path.suffix == ".html"
+
+
+def test_create_report_paths_stays_under_reports_directory(tmp_path: Path) -> None:
+    paths = create_report_paths(make_report("../../outside"), tmp_path, now=FIXED_NOW)
+
+    assert paths.json_path.parent == tmp_path
+    assert paths.html_path.parent == tmp_path
+    assert ".." not in paths.json_path.name
+    assert paths.json_path.resolve().parent == tmp_path.resolve()
 
 
 def test_write_json_report_serializes_model(tmp_path: Path) -> None:

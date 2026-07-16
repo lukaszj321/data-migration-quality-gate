@@ -1,3 +1,8 @@
 """Data Migration Quality Gate package."""
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("data-migration-quality-gate")
+except PackageNotFoundError:
+    __version__ = "0.1.0"

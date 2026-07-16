@@ -106,6 +106,7 @@ def safe_report_name(name: str) -> str:
     without_paths = lowered.replace("/", "-").replace("\\", "-")
     safe = re.sub(r"[^a-z0-9._-]+", "-", without_paths)
     safe = re.sub(r"\.+", ".", safe)
+    safe = re.sub(r"-+", "-", safe)
     safe = safe.strip(" ._-")
     safe = safe.replace("..", ".")
     if not safe:

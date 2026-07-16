@@ -18,6 +18,7 @@ from data_quality_gate.exceptions import (
 )
 from data_quality_gate.models import CheckStatus
 from data_quality_gate.reporting import format_summary, write_reports
+from data_quality_gate.safety import safe_error_message
 
 EXIT_PASS = 0
 EXIT_WARN = 1
@@ -57,15 +58,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             return exit_code_for_status(report.summary.status)
 
     except ConfigurationError as exc:
-        print(f"Configuration error: {exc}", file=sys.stderr)
+        print(f"Configuration error: {safe_error_message(exc)}", file=sys.stderr)
         return EXIT_INVALID_CONFIG
     except (DatabaseConnectionError, CheckExecutionError, ReportWriteError) as exc:
-        print(f"Technical failure: {exc}", file=sys.stderr)
+        print(f"Technical failure: {safe_error_message(exc)}", file=sys.stderr)
         return EXIT_TECHNICAL_FAILURE
     except Exception as exc:
         if os.getenv("DQG_DEBUG"):
             raise
-        print(f"Technical failure: {exc.__class__.__name__}: {exc}", file=sys.stderr)
+        print(
+            f"Technical failure: {exc.__class__.__name__}: {safe_error_message(exc)}",
+            file=sys.stderr,
+        )
         return EXIT_TECHNICAL_FAILURE
 
     parser.error("Unsupported command.")
