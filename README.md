@@ -1,8 +1,14 @@
 # Data Migration Quality Gate
 
+[![CI](https://github.com/lukaszj321/data-migration-quality-gate/actions/workflows/ci.yml/badge.svg)](https://github.com/lukaszj321/data-migration-quality-gate/actions/workflows/ci.yml)
+
+Aktualna wersja: `0.1.0`
+
+Release: <https://github.com/lukaszj321/data-migration-quality-gate/releases/tag/v0.1.0>
+
 Data Migration Quality Gate to narzędzie CLI pełniące rolę bramki jakości migracji, czyli `quality gate`, dla migracji danych pomiędzy dwiema bazami PostgreSQL. Porównuje bazę źródłową z bazą docelową, wykonuje zestaw kontroli jakości i zwraca decyzję wdrożeniową: `ALLOW`, `REVIEW` albo `BLOCK`.
 
-Projekt jest aktualnie lokalnym release candidate wersji `0.1.0`. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML, pakiet Python oraz uruchamianie przez hosta albo kontener CLI.
+Projekt jest aktualnie w wersji `0.1.0`. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML, pakiet Python oraz uruchamianie przez hosta albo kontener CLI.
 
 ## Spis treści
 
@@ -696,11 +702,8 @@ Katalog `reports/` przechowuje raporty runtime, ale pliki JSON i HTML z raportam
 
 ## Ograniczenia wersji 0.1.0
 
-To jest lokalny release candidate projektu portfolio i demonstracyjne narzędzie inżynierskie, nie gotowy system produkcyjny. Aktualny zakres świadomie pomija:
+To jest demonstracyjne narzędzie inżynierskie projektu portfolio, nie gotowy system produkcyjny. Aktualny zakres świadomie pomija:
 
-- GitHub Actions,
-- publikację na GitHub,
-- tagi i release,
 - API HTTP,
 - frontend React,
 - hostowany dashboard online,
@@ -717,7 +720,6 @@ Target w danych demonstracyjnych celowo zawiera kontrolowane błędy, aby pokaza
 
 Naturalne kolejne kroki to:
 
-- workflow CI dla lintingu, typów i testów,
 - bardziej szczegółowe raporty różnic wartości,
 - konfiguracja progów decyzyjnych per kontrola albo per tabela.
 
