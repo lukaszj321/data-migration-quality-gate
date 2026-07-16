@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
 
 import pytest
 from sqlalchemy import create_engine
@@ -10,6 +12,7 @@ from data_quality_gate.checks.base import CheckContext
 from data_quality_gate.config import load_config
 from data_quality_gate.engine import run_checks
 from data_quality_gate.models import CheckStatus
+from data_quality_gate.reporting import write_reports
 
 pytestmark = pytest.mark.integration
 
@@ -75,3 +78,38 @@ def test_demo_full_gate_has_pass_warn_and_fail() -> None:
     assert CheckStatus.PASS in statuses
     assert CheckStatus.WARN in statuses
     assert CheckStatus.FAIL in statuses
+
+
+def test_demo_runtime_writes_matching_json_and_html_reports(tmp_path: Path) -> None:
+    source_url = os.getenv("DQG_SOURCE_DB_URL")
+    target_url = os.getenv("DQG_TARGET_DB_URL")
+    if not source_url or not target_url:
+        pytest.skip("DQG_SOURCE_DB_URL and DQG_TARGET_DB_URL are required for integration tests.")
+
+    config = load_config("migration.yaml")
+    source = create_engine(source_url, future=True)
+    target = create_engine(target_url, future=True)
+    try:
+        report = run_checks(config, source, target)
+    finally:
+        source.dispose()
+        target.dispose()
+
+    paths = write_reports(report, tmp_path)
+    payload = json.loads(paths.json_path.read_text(encoding="utf-8"))
+    html = paths.html_path.read_text(encoding="utf-8")
+
+    assert paths.json_path.exists()
+    assert paths.html_path.exists()
+    assert paths.json_path.stem == paths.html_path.stem
+    assert payload["summary"]["status"] == "FAIL"
+    assert payload["summary"]["deployment_decision"] == "BLOCK"
+    assert payload["summary"]["checks_total"] == 31
+    assert "FAIL" in html
+    assert "BLOCK" in html
+    assert ">31<" in html
+    assert html.count("<details>") == len(payload["results"])
+    assert "dqg_demo_password" not in html
+    assert "postgresql+psycopg://" not in html
+    assert "C:\\Users" not in html
+    assert html.startswith("<!DOCTYPE html>")

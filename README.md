@@ -2,7 +2,7 @@
 
 Data Migration Quality Gate to narzędzie CLI pełniące rolę bramki jakości migracji, czyli `quality gate`, dla migracji danych pomiędzy dwiema bazami PostgreSQL. Porównuje bazę źródłową z bazą docelową, wykonuje zestaw kontroli jakości i zwraca decyzję wdrożeniową: `ALLOW`, `REVIEW` albo `BLOCK`.
 
-Projekt jest aktualnie na etapie Milestone 2B. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON oraz kody wyjścia przydatne w automatyzacji.
+Projekt jest aktualnie na etapie Milestone 3. Implementuje działający pionowy fragment: walidację konfiguracji YAML, połączenie z dwiema bazami PostgreSQL, jedenaście typów kontroli jakości, czytelne podsumowanie CLI, raport JSON, samodzielny raport HTML oraz kody wyjścia przydatne w automatyzacji.
 
 ## Spis treści
 
@@ -22,9 +22,10 @@ Projekt jest aktualnie na etapie Milestone 2B. Implementuje działający pionowy
 - [Uruchomienie gate](#uruchomienie-gate)
 - [Statusy decyzje i kody wyjścia](#statusy-decyzje-i-kody-wyjścia)
 - [Raport JSON](#raport-json)
+- [Raport HTML](#raport-html)
 - [Testy i quality gates](#testy-i-quality-gates)
 - [Struktura projektu](#struktura-projektu)
-- [Ograniczenia Milestone 2B](#ograniczenia-milestone-2b)
+- [Ograniczenia Milestone 3](#ograniczenia-milestone-3)
 - [Planowane kolejne kroki](#planowane-kolejne-kroki)
 
 ---
@@ -82,6 +83,7 @@ flowchart LR
     C --> E[Wyniki kontroli]
     E --> F[PASS / WARN / FAIL]
     E --> G[Raport JSON]
+    E --> I[Raport HTML]
     F --> H[ALLOW / REVIEW / BLOCK]
 ```
 
@@ -91,7 +93,7 @@ flowchart LR
 
 ## Aktualny zakres
 
-Milestone 2B obejmuje:
+Milestone 3 obejmuje:
 
 - CLI `data-quality-gate`,
 - walidację konfiguracji YAML,
@@ -103,10 +105,11 @@ Milestone 2B obejmuje:
 - agregację wyników do `PASS`, `WARN` albo `FAIL`,
 - decyzję wdrożeniową `ALLOW`, `REVIEW` albo `BLOCK`,
 - raport JSON w katalogu `reports/`,
+- samodzielny raport HTML w katalogu `reports/`,
 - testy jednostkowe i integracyjne,
 - lokalne środowisko demonstracyjne w Docker Compose.
 
-Wersja aplikacji pozostaje `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`, ponieważ Milestone 2B dodaje nowe wartości `check_name`, ale nie zmienia publicznej struktury raportu.
+Wersja aplikacji pozostaje `0.1.0`. Wersja schematu raportu JSON pozostaje `0.1`, ponieważ Milestone 3 dodaje prezentację HTML, ale nie zmienia publicznej struktury raportu JSON.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -406,7 +409,7 @@ Uruchom pełną walidację migracji:
 data-quality-gate run migration.yaml
 ```
 
-Rzeczywisty output dla danych demonstracyjnych Milestone 2B:
+Rzeczywisty output dla danych demonstracyjnych Milestone 3:
 
 ```text
 Migration: legacy-payments-to-new-payments
@@ -419,9 +422,19 @@ Failed: 12
 
 Deployment decision: BLOCK
 JSON report: reports\legacy-payments-to-new-payments-<run-id>.json
+HTML report: reports\legacy-payments-to-new-payments-<run-id>.html
 ```
 
 Zawartość tego bloku pozostaje po angielsku, ponieważ aplikacja faktycznie wypisuje komunikaty CLI po angielsku.
+
+Oba pliki mają wspólną bezpieczną nazwę bazową, na przykład:
+
+```text
+legacy-payments-to-new-payments-20260716T101530123456Z.json
+legacy-payments-to-new-payments-20260716T101530123456Z.html
+```
+
+Do nazwy używany jest timestamp UTC. Poprzednie raporty nie są nadpisywane.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -484,7 +497,7 @@ Model `CheckResult` zachowuje stały publiczny kontrakt:
 - `sample_records`,
 - `duration_ms`.
 
-Milestone 2B dodaje nowe wartości `check_name`, ale nie zmienia struktury raportu. Raport nie zawiera haseł, connection stringów ani surowych danych uwierzytelniających.
+Milestone 3 nie zmienia struktury raportu JSON. JSON pozostaje maszynowym źródłem prawdy, a HTML jest prezentacją tego samego obiektu `MigrationReport` dla człowieka. Raport nie zawiera haseł, connection stringów ani surowych danych uwierzytelniających.
 
 Przykładowy fragment wyniku `numeric_tolerance`:
 
@@ -525,6 +538,44 @@ Przykładowy fragment wyniku `checksum`:
   ]
 }
 ```
+
+[↑ Powrót do spisu treści](#spis-treści)
+
+---
+
+## Raport HTML
+
+Po każdym technicznie udanym uruchomieniu `run` narzędzie zapisuje również raport HTML w katalogu `reports/`.
+
+Raport HTML:
+
+- jest pojedynczym plikiem `.html`,
+- działa po zwykłym otwarciu w przeglądarce,
+- działa offline,
+- nie wymaga serwera,
+- nie używa JavaScriptu,
+- nie korzysta z CDN, zewnętrznych fontów ani osobnych plików CSS,
+- jest generowany z tego samego `MigrationReport` co JSON.
+
+Na Windowsie raport można otworzyć poleceniem:
+
+```powershell
+start reports\legacy-payments-to-new-payments-<run-id>.html
+```
+
+Raport zawiera:
+
+- nagłówek z nazwą migracji, czasem rozpoczęcia i zakończenia, czasem wykonania oraz `schema_version`,
+- główną decyzję `PASS`/`WARN`/`FAIL` i `ALLOW`/`REVIEW`/`BLOCK`,
+- podsumowanie liczby kontroli,
+- osobną listę kontroli `FAIL`,
+- tabelę wszystkich wyników,
+- szczegóły każdego wyniku w natywnych sekcjach `<details>`,
+- metadane generatora.
+
+Wartości pochodzące z konfiguracji, danych bazodanowych, komunikatów i `sample_records` są escapowane przed wstawieniem do HTML. Dotyczy to między innymi znaków `&`, `<`, `>`, `"`, `'`. Dzięki temu przykładowa wartość podobna do `<script>alert("x")</script>` jest pokazana jako tekst, a nie jako wykonywalny kod.
+
+Wartości złożone, takie jak listy i słowniki, są renderowane jako sformatowany JSON w HTML. `Decimal`, timestampy i `NULL` zachowują czytelny, stabilny format.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
@@ -573,6 +624,7 @@ data_quality_gate/
   config.py
   database.py
   engine.py
+  html_reporting.py
   models.py
   reporting.py
   checks/
@@ -580,20 +632,22 @@ tests/
 reports/
 ```
 
-Katalog `reports/` przechowuje raporty runtime, ale pliki JSON z raportami są ignorowane przez Git. W repozytorium pozostaje tylko `reports/.gitkeep`.
+Katalog `reports/` przechowuje raporty runtime, ale pliki JSON i HTML z raportami są ignorowane przez Git. W repozytorium pozostaje tylko `reports/.gitkeep`.
 
 [↑ Powrót do spisu treści](#spis-treści)
 
 ---
 
-## Ograniczenia Milestone 2B
+## Ograniczenia Milestone 3
 
 To nie jest wersja produkcyjna. Aktualny zakres świadomie pomija:
 
-- raport HTML,
 - GitHub Actions,
 - publikację na GitHub,
 - tagi i release,
+- API HTTP,
+- frontend React,
+- hostowany dashboard online,
 - obsługę innych silników baz danych niż PostgreSQL,
 - rozbudowany diff wartości poza limitowanymi próbkami w JSON.
 
@@ -607,7 +661,6 @@ Narzędzie koncentruje się na lokalnym, deterministycznym quality gate dla przy
 
 Naturalne kolejne kroki to:
 
-- raport HTML jako wygodniejsza forma przeglądu wyników,
 - workflow CI dla lintingu, typów i testów,
 - bardziej szczegółowe raporty różnic wartości,
 - konfiguracja progów decyzyjnych per kontrola albo per tabela.

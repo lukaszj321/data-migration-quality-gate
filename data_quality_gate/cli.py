@@ -17,7 +17,7 @@ from data_quality_gate.exceptions import (
     ReportWriteError,
 )
 from data_quality_gate.models import CheckStatus
-from data_quality_gate.reporting import format_summary, write_json_report
+from data_quality_gate.reporting import format_summary, write_reports
 
 EXIT_PASS = 0
 EXIT_WARN = 1
@@ -52,8 +52,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "run":
             config = load_config(args.config_path)
             report = run_quality_gate(config)
-            report_path = write_json_report(report)
-            print(format_summary(report, report_path))
+            report_paths = write_reports(report)
+            print(format_summary(report, report_paths))
             return exit_code_for_status(report.summary.status)
 
     except ConfigurationError as exc:

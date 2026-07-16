@@ -18,4 +18,4 @@ class CheckExecutionError(DataQualityGateError):
 
 
 class ReportWriteError(DataQualityGateError):
-    """Raised when a JSON report cannot be written."""
+    """Raised when a report artifact cannot be written."""
