@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
@@ -61,7 +61,7 @@ def execute_scalar_count(engine: Engine, sql: str) -> int:
     return int(value)
 
 
-def sorted_unique_key_rows(engine: Engine, table: str, primary_key: str) -> Iterator[Row[Any]]:
+def sorted_unique_key_rows(engine: Engine, table: str, primary_key: str) -> Generator[Row[Any]]:
     quoted_table = quote_identifier(table)
     quoted_key = quote_identifier(primary_key)
     sql = text(
@@ -75,4 +75,7 @@ def sorted_unique_key_rows(engine: Engine, table: str, primary_key: str) -> Iter
     )
     with engine.connect() as connection:
         result = connection.execution_options(stream_results=True).execute(sql)
-        yield from result
+        try:
+            yield from result
+        finally:
+            result.close()

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Generator, Iterator
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
@@ -51,7 +51,7 @@ def unique_rows(
     primary_key: str,
     columns: list[str],
     excluded_keys: set[Any] | None = None,
-) -> Iterator[dict[str, Any]]:
+) -> Generator[dict[str, Any]]:
     quoted_table = quote_identifier(table)
     quoted_key = quote_identifier(primary_key)
     selected_columns = ",\n            ".join(
@@ -78,10 +78,13 @@ def unique_rows(
     )
     with engine.connect() as connection:
         result = connection.execution_options(stream_results=True).execute(sql).mappings()
-        for row in result:
-            if excluded_keys is not None and row["primary_key"] in excluded_keys:
-                continue
-            yield dict(row)
+        try:
+            for row in result:
+                if excluded_keys is not None and row["primary_key"] in excluded_keys:
+                    continue
+                yield dict(row)
+        finally:
+            result.close()
 
 
 def comparable_row_pairs(

@@ -42,22 +42,27 @@ def run(context: CheckContext) -> CheckResult:
 def _source_only_keys(context: CheckContext) -> tuple[int, list[dict[str, str]]]:
     source_rows = sorted_unique_key_rows(context.source_engine, context.table, context.primary_key)
     target_rows = sorted_unique_key_rows(context.target_engine, context.table, context.primary_key)
-    source_value = _next_key(source_rows)
-    target_value = _next_key(target_rows)
     count = 0
     samples: list[dict[str, str]] = []
 
-    while source_value is not None:
-        if target_value is None or source_value < target_value:
-            count += 1
-            if len(samples) < context.sample_limit:
-                samples.append({context.primary_key: source_value})
-            source_value = _next_key(source_rows)
-        elif source_value == target_value:
-            source_value = _next_key(source_rows)
-            target_value = _next_key(target_rows)
-        else:
-            target_value = _next_key(target_rows)
+    try:
+        source_value = _next_key(source_rows)
+        target_value = _next_key(target_rows)
+
+        while source_value is not None:
+            if target_value is None or source_value < target_value:
+                count += 1
+                if len(samples) < context.sample_limit:
+                    samples.append({context.primary_key: source_value})
+                source_value = _next_key(source_rows)
+            elif source_value == target_value:
+                source_value = _next_key(source_rows)
+                target_value = _next_key(target_rows)
+            else:
+                target_value = _next_key(target_rows)
+    finally:
+        source_rows.close()
+        target_rows.close()
 
     return count, samples
 
